@@ -21,13 +21,14 @@ from ThermalModel import ThermalModel
 
 
 class ThermoViscoProblem:
-    def __init__(self,mesh_path: str,time: tuple, dt: float,
-                 config: dict, model_parameters: dict,
+    def __init__(self,mesh_path: str, problem_dim: int, time: tuple, 
+                 dt: float, config: dict, model_parameters: dict,
                  jit_options: (dict|None) = None ) -> None:
-        self.mesh, self.cell_tags, self.facet_tags = gmshio.read_from_msh(
-            mesh_path, MPI.COMM_WORLD, 0, gdim=1)
         
-        self.dim = self.mesh.topology.dim
+        self.dim = problem_dim
+        self.mesh, self.cell_tags, self.facet_tags = gmshio.read_from_msh(
+            mesh_path, MPI.COMM_WORLD, 0, gdim=problem_dim)
+        
         self.dt = dt
         # The time domain
         self.time = time

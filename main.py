@@ -14,12 +14,13 @@ time = (0.0, 50.0)
 
 dt = 0.1
 t = t_start
+problem_dim = 2
 
-mesh_path = "mesh1d.msh"
-create_new_mesh = False
+mesh_path = f"mesh{problem_dim}d.msh"
+create_new_mesh = True
 
 if create_new_mesh:
-    create_mesh(path=mesh_path)
+    create_mesh(path=mesh_path,dim=problem_dim)
 
 fe_config = {
     "T":        {"element": "DG", "degree": 1},
@@ -54,8 +55,8 @@ model_params = {
     "Tf_init": 873.0,
 }
 
-model = ThermoViscoProblem(mesh_path=mesh_path,config=fe_config,
-                           time=time,dt=dt,model_parameters=model_params,
+model = ThermoViscoProblem(mesh_path=mesh_path,problem_dim=problem_dim,
+                           config=fe_config,time=time,dt=dt,model_parameters=model_params,
                            jit_options=jit_options)
 
 model.setup(dirichlet_bc=False)
