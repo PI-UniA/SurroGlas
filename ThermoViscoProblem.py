@@ -1,15 +1,14 @@
 from dolfinx.mesh import locate_entities_boundary
 from mpi4py import MPI
-from dolfinx.mesh import locate_entities_boundary
 from dolfinx import fem, io
 from dolfinx.nls import petsc
 from dolfinx.io import gmshio
-from dolfinx.fem import (FunctionSpace, Function, Constant,)
+from dolfinx.fem import (FunctionSpace, Function, Constant, locate_dofs_geometrical, locate_dofs_topological)
 from dolfinx.fem.petsc import NonlinearProblem
-from ufl import (TestFunction, FiniteElement, TensorElement,
+from ufl import (TestFunction,TrialFunction, FiniteElement, TensorElement,
                  VectorElement, grad, inner,
                  CellDiameter, avg, jump,
-                 Measure, SpatialCoordinate, FacetNormal)#, ds, dx
+                 Measure, SpatialCoordinate, FacetNormal,inner, tr, sym, Identity, dot, nabla_div, ds, dx)#
 from petsc4py.PETSc import ScalarType
 from petsc4py import PETSc
 import numpy as np
@@ -18,16 +17,18 @@ from math import ceil
 from time import time
 from ViscoelasticModel import ViscoelasticModel
 from ThermalModel import ThermalModel
+from dolfinx import default_scalar_type
+from dolfinx.fem import Constant, Expression
 
 
 class ThermoViscoProblem:
-    def __init__(self,mesh_path: str,time: tuple, dt: float,
-                 config: dict, model_parameters: dict,
+    def __init__(self,mesh_path: str, problem_dim: int, time: tuple,
+                 dt: float, config: dict, model_parameters: dict,
                  jit_options: (dict|None) = None ) -> None:
+        self.dim = problem_dim
         self.mesh, self.cell_tags, self.facet_tags = gmshio.read_from_msh(
-            mesh_path, MPI.COMM_WORLD, 0, gdim=1)
-        
-        self.dim = self.mesh.topology.dim
+            mesh_path, MPI.COMM_WORLD, 0, gdim=problem_dim)
+        self.__init_boundary_markers()
         self.dt = dt
         # The time domain
         self.time = time
@@ -54,6 +55,17 @@ class ThermoViscoProblem:
             dt=self.dt)
 
         self.jit_options = jit_options
+
+        return
+    
+
+    def __init_boundary_markers(self) -> None:
+        self.bc_markers = {}
+        self.bc_markers["left"]     = self.facet_tags.find(10)
+        self.bc_markers["right"]    = self.facet_tags.find(12)
+        if self.dim == 2:
+            self.bc_markers["top"]      = self.facet_tags.find(11)
+            self.bc_markers["bottom"]   = self.facet_tags.find(13)
 
         return
     
@@ -99,6 +111,12 @@ class ThermoViscoProblem:
                                  degree=config["sigma"]["degree"],
                                  shape=(self.material_model.tableau_size,self.dim,self.dim))
         self.functionSpaces["sigma_partial"] = FunctionSpace(self.mesh,self.finiteElements["sigma_partial"])
+        
+        # Displacements
+        self.finiteElements["U"] = VectorElement(config["U"]["element"],
+                                    self.mesh.ufl_cell(),
+                                    degree=config["U"]["degree"])
+        self.functionSpaces["U"] = FunctionSpace(mesh=self.mesh, element=self.finiteElements["U"])
         
         return
     
@@ -167,21 +185,31 @@ class ThermoViscoProblem:
 
         self.functions_current["sigma_partial"] = Function(self.functionSpaces["sigma_partial"])
         self.functions_next["sigma_partial"] = Function(self.functionSpaces["sigma_partial"])
+        #self.functions["f2G"] = Function(self.functionSpaces["f2G"])
+        #self.functions["f2K"] = Function(self.functionSpaces["f2K"])
 
         self.functions_next["sigma"] = Function(self.functionSpaces["sigma"], name="Stress_tensor")
-    
+        
+        self.functions["U"] = Function(self.functionSpaces["U"], name="Displacement")
+        self.u_trial = TrialFunction(self.functionSpaces["U"])
+        self.v_test = TestFunction(self.functionSpaces["U"])
+        
+        self.functions["elastic_strain"] = Function(self.functionSpaces["sigma"], name="Mechanical_strain")
+
         return
     
 
-    def setup(self, dirichlet_bc: bool = False,
-              outfile_name: str = "visco",
-              outfile_name1: str = "stresses") -> None:
+    def setup(self, dirichlet_bc: bool = True,
+              outfile_T: str = "visco",
+              outfile_sigma: str = "stresses") -> None:
         self._set_initial_condition(temp_value=self.material_model.T_init)
         if dirichlet_bc:
-            self._set_dirichlet_bc(bc_value=self.material_model.T_ambient)
+            self._set_dirichlet_bc()
         self._write_initial_output(t=self.t)
-        self._setup_weak_form()
-        self._setup_solver()
+        self._setup_weak_form_T()
+        self._setup_solver_T()
+        self._setup_weak_form_u()
+        self._setup_solver_u()
 
 
     def _set_initial_condition(self, temp_value: float) -> None:
@@ -218,9 +246,6 @@ class ThermoViscoProblem:
         values.
         For t0, Tf(n) = T (c.f. Nielsen et al., eq. 27)
         """
-        #for (previous,current) in zip(self.functions_previous["Tf_partial"],self.functions_current["Tf_partial"]):
-        #    current.x.array[:] = self.functions_current["T"].x.array[:]
-        #    previous.x.array[:] = self.functions_previous["T"].x.array[:]
         temp_value = self.functions_current["T"].x.array[0]
         dim = self.material_model.tableau_size
         def Tf_init(x):
@@ -232,15 +257,6 @@ class ThermoViscoProblem:
 
         return
     
-
-    def _set_dirichlet_bc(self, bc_value: float) -> None:
-        fdim = self.mesh.topology.dim - 1
-        boundary_facets = locate_entities_boundary(
-            self.mesh, fdim, lambda x: np.full(x.shape[1], True, dtype=bool))
-        self.bc = fem.dirichletbc(PETSc.ScalarType(bc_value), 
-                                  fem.locate_dofs_topological(self.fs, fdim, boundary_facets), self.fs)
-        
-        return
 
 
     def _write_initial_output(self,t: float = 0.0) -> None:
@@ -257,9 +273,16 @@ class ThermoViscoProblem:
             # BUG: VTXWriter doesn't support mixed elements
             #io.VTXWriter(self.mesh.comm,"output/Tf_partial.bp",
             #             [self.functions_current["Tf_partial"]],engine="BP4"),
+            # thermal strain
+            io.VTXWriter(self.mesh.comm,"output/eth.bp",
+                         [self.functions["thermal_strain"]],engine="BP4"),
             # Shifted time
             io.VTXWriter(self.mesh.comm,"output/xi.bp",
                          [self.functions["xi"]],engine="BP4"),
+            # Displacements
+            io.VTXWriter(self.mesh.comm,"output/u.bp",
+                         [self.functions["U"]],engine="BP4"),
+
         ]
         
         for file in self.vtx_files:
@@ -275,11 +298,12 @@ class ThermoViscoProblem:
 
         return
 
+    # Heat diffusion equation #
+    
+    def _setup_weak_form_T(self) -> None:
         
-
-    def _setup_weak_form(self) -> None:
-        ds = Measure("exterior_facet",domain=self.mesh)
-        dx = Measure("dx",domain=self.mesh)
+        #ds = Measure("exterior_facet",domain=self.mesh)
+        #dx = Measure("dx",domain=self.mesh)
 
         element_type = self.finiteElements["T"].family()
 
@@ -327,7 +351,7 @@ class ThermoViscoProblem:
         return
     
 
-    def _setup_solver(self) -> None:
+    def _setup_solver_T(self) -> None:
         self.prob = NonlinearProblem(F=self.F,u=self.functions_current["T"],
                                                jit_options=self.jit_options)
 
@@ -344,7 +368,35 @@ class ThermoViscoProblem:
         opts[f"{option_prefix}pc_type"] = "gamg"
         opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
         self.ksp.setFromOptions()
+        
+    # linear elasticity equation #
     
+    def _set_dirichlet_bc(self) -> None:
+          
+        facet_dim = self.mesh.topology.dim-1
+        
+        bottom_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["bottom"])
+        
+        
+        self.bc = [
+                   fem.dirichletbc(ScalarType([0.,0.]), bottom_bc, self.functionSpaces["U"])
+                   ]
+    
+    def _setup_weak_form_u(self) -> None:
+        
+        #ds = Measure("exterior_facet",domain=self.mesh)
+        #dx = Measure("dx",domain=self.mesh)
+        
+        self.ss = Constant(self.mesh,default_scalar_type((0.0,0.0)))          # Body force
+        self.traction = Constant(self.mesh,default_scalar_type((0.0,0.0)))      # traction force no matter
+
+        self.a = inner(self.material_model.elastic_sigma(self.u_trial), self.material_model.elastic_epsilon(self.v_test)) * dx 
+        self.L = dot(self.ss, self.v_test) * dx + dot(self.traction,self.v_test) * ds
+        
+        
+    def _setup_solver_u(self) -> None:
+    
+        self.problem = fem.petsc.LinearProblem(self.a, self.L, u=self.functions["U"], bcs=self.bc, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
         
     def _update_values(self,current: Function,previous: Function) -> None:
         # Update ghost values across processes, relevant for MPI computations
@@ -358,8 +410,7 @@ class ThermoViscoProblem:
         for file in self.vtx_files:
             file.write(t=self.t)
         
-        self.outfile_sigma.write_function(self.functions_next["sigma"],
-                                          self.t)
+        self.outfile_sigma.write_function(self.functions_next["sigma"], self.t)
 
         return
     
@@ -367,16 +418,18 @@ class ThermoViscoProblem:
     def solve_timestep(self,t) -> None:
         print(f"t={self.t}")
         self._solve_T()
+        self._solve_u()
         self._solve_Tf()
         self._solve_strains()
         self._solve_shifted_time()
         self._solve_stress()
         self._write_output()
         
-        # For some computations, functions_previous["T"] is needed
+        # For some computations, functions_previous["T"] and functions_previous["displacement"] is needed
         # thus, we update only at the end of each timestep
         self._update_values(current=self.functions_current["T"],
                             previous=self.functions_previous["T"])
+        #self._update_values(current=self.functions_current["displacement"],previous=self.functions_previous["displacement"])
         
         return
     
@@ -388,6 +441,15 @@ class ThermoViscoProblem:
         """
         _, converged = self.solver.solve(self.functions_current["T"])
         assert(converged)
+        return
+    
+    def _solve_u(self) -> None:
+        """
+        Solve the linear elasticity equation for each time step.
+        Update values and write current values to file.
+        """
+        self.problem.solve()
+
         return
     
     def _solve_Tf(self) -> None:
@@ -419,6 +481,7 @@ class ThermoViscoProblem:
         self.__update_thermal_strain()
         self.__update_total_strain()
         self.__update_deviatoric_strain()
+        self.__update_elastic_strain()
 
         return
     
@@ -448,6 +511,7 @@ class ThermoViscoProblem:
         self.__update_deviatoric_stress()
         self.__update_hydrostatic_stress()
         self.__update_total_stress()
+        
 
         return
 
@@ -528,10 +592,8 @@ class ThermoViscoProblem:
         return
     
     def __update_phi(self) -> None:
-        self.functions["phi"].interpolate(
-            self.material_model.expressions["phi"])
-        self.functions_next["phi"].interpolate(
-            self.material_model.expressions["phi_next"]
+        self.functions["phi"].interpolate(self.material_model.expressions["phi"])
+        self.functions_next["phi"].interpolate(self.material_model.expressions["phi_next"]
         )
 
         return
@@ -541,7 +603,6 @@ class ThermoViscoProblem:
         self.functions["xi"].interpolate(
             self.material_model.expressions["xi"]
         )
-
         return
 
 
@@ -590,6 +651,12 @@ class ThermoViscoProblem:
     def __update_total_stress(self) -> None:
         self.functions_next["sigma"].interpolate(
             self.material_model.expressions["sigma_next"]
+        )
+        return
+    
+    def __update_elastic_strain(self) -> None:
+        self.functions["elastic_strain"].interpolate(
+            self.material_model.expressions["elastic_strain"]
         )
 
         return
