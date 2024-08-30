@@ -163,10 +163,17 @@ class ViscoelasticModel:
         )
 
         #volumetric strain (assuming linear elasticity) for 1D exx = [0,0], 2D (exx+eyy)= ([0,0]+[1,1])/2, etc, it is also called sum of direct strains
-        self.expressions["volumetric_strain"] = Expression(
-            (self.elastic_epsilon(functions["U"])[0, 0] + self.elastic_epsilon(functions["U"])[1, 1]),
-            functionSpaces["T"].element.interpolation_points()
-        )
+        if self.dim == 1:
+            self.expressions["volumetric_strain"] = Expression(
+                (self.elastic_epsilon(functions["U"])[0, 0]),
+                functionSpaces["T"].element.interpolation_points()
+            )
+            
+        elif self.dim == 2:
+            self.expressions["volumetric_strain"] = Expression(
+                (self.elastic_epsilon(functions["U"])[0, 0] + self.elastic_epsilon(functions["U"])[1, 1]),
+                functionSpaces["T"].element.interpolation_points()
+            )
         #elastic strain (assuming linear elasticity)
         self.expressions["elastic_strain"] = Expression(
             self.elastic_epsilon(functions["U"]),
@@ -272,13 +279,12 @@ class ViscoelasticModel:
                     n in range(0,self.tableau_size)]),
             functionSpaces["Tf_partial"].element.interpolation_points()
         )
-
+        
         # Eq. 18 - Summation of total stresses curve c in fig. 2, including residual stress
         self.expressions["sigma_next"] = Expression(
             np.sum([functions_next["s_partial"][n,:,:] + (self.I*functions_next["sigma_partial"][n]) for n in range(0,self.tableau_size)]),
             functionSpaces["sigma"].element.interpolation_points()
-        )
-        
+        )     
         # Eq. 22
         self.expressions["A"] = Expression(
             (1/3) * np.sum([g_n *  (lambda_g_n/dt) * (1 - ufl.exp(-dt/lambda_g_n))

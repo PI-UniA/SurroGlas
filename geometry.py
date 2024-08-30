@@ -1,4 +1,5 @@
 import gmsh
+import numpy as np
 def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
     gmsh.initialize()
     gmsh.model.add(f"Glass {dim}D mesh")
@@ -8,11 +9,11 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
     resolution_coarse = 3.0
 
     if dim == 1:
-        left = gmsh.model.occ.addPoint(0.0,0.0,0.0,resolution_fine,0)
-        gmsh.model.occ.addPoint(5.0,0.0,0.0,resolution_mid,1)
-        gmsh.model.occ.addPoint(25.0,0.0,0.0,resolution_coarse,2)
-        gmsh.model.occ.addPoint(45.0,0.0,0.0,resolution_mid,3)
-        right = gmsh.model.occ.addPoint(50.0,0.0,0.0,resolution_fine,4)
+        left = gmsh.model.occ.addPoint(-25.0,0.0,0.0,resolution_fine,0)
+        gmsh.model.occ.addPoint(-20.0,0.0,0.0,resolution_mid,1)
+        gmsh.model.occ.addPoint(0.0,0.0,0.0,resolution_coarse,2)
+        gmsh.model.occ.addPoint(20.0,0.0,0.0,resolution_mid,3)
+        right = gmsh.model.occ.addPoint(25.0,0.0,0.0,resolution_fine,4)
 
         gmsh.model.occ.addLine(0,1,0)
         gmsh.model.occ.addLine(1,2,1)
@@ -28,14 +29,15 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
         gmsh.model.setPhysicalName(1, 0, "cells")
     
     elif dim == 2:
+        
         w = 20
         h = 4
         # width and thickness of the mesh
         # Add points for the rectangle corners
-        p1 = gmsh.model.occ.addPoint(0.0, 0.0, 0.0, resolution_mid)
-        p2 = gmsh.model.occ.addPoint(w, 0.0, 0.0, resolution_mid)
-        p3 = gmsh.model.occ.addPoint(w, h, 0.0, resolution_mid)
-        p4 = gmsh.model.occ.addPoint(0.0, h, 0.0, resolution_mid)
+        p1 = gmsh.model.occ.addPoint(-25.0, -5.0, 0.0, resolution_mid)
+        p2 = gmsh.model.occ.addPoint(25.0, -5.0, 0.0, resolution_mid)
+        p3 = gmsh.model.occ.addPoint(25.0, 5.0, 0.0, resolution_mid)
+        p4 = gmsh.model.occ.addPoint(-25.0, 5.0, 0.0, resolution_mid)
 
         # Create lines to form the boundaries of the rectangle
         bottom_line = gmsh.model.occ.addLine(p1, p2)
@@ -191,7 +193,7 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
             #gmsh.model.occ.translate([(3, volume)], shift_x * i, 0, 0)
 
     # Generate mesh
-                    # Visualize the mesh
+    # Visualize the mesh
     
     gmsh.model.occ.synchronize()
     gmsh.model.mesh.generate(dim=dim)

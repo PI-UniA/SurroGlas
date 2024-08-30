@@ -15,10 +15,10 @@ jit_options = {
 
 # Time domain (whole time domain or for each zone)
 t_start = 0.0
-t_end = 10.0
+t_end = 20.0
 time = (t_start, t_end)
 
-dt = 0.1
+dt = 0.05
 t = t_start
 
 # Problem dimensions (1D, 2D, or 3D)
@@ -35,7 +35,7 @@ if create_new_mesh:
     create_mesh(path=mesh_path,dim=problem_dim, name=Zone_name, t_start=t_start, t_end=t_end)
 
 fe_config = {
-    "T":        {"element": "DG", "degree": 1},
+    "T":        {"element": "CG", "degree": 1},
     "sigma":    {"element": "CG", "degree": 1},
     "U":        {"element": "CG", "degree": 1}
 }
@@ -92,7 +92,7 @@ model.setup(dirichlet_bc_mech=True)
 model.solve()
 
 
-'''t_ = np.linspace(start=0.0, stop=10, num=100)
+'''t_ = np.linspace(start=0.0, stop=20, num=200)
 
 #Variables of analytical equations in arrays over time loop
 
@@ -171,25 +171,3 @@ plt.tight_layout()
 plt.show()'''
 
 
-# convert numpy arrays into a fenics function, ask chatgbt
-# try again in 1D model of the body forces, and how is imported as a vector in linear elasticity problem
-# try the middle option(point)
-
-
-#gmsh
-# thickness is defined through points
-# resolution defines how many nodes 
-# without tages for BC, gives me exact number of elements = nodes -1
-#thickness = 5.0 #units m , while the nodes represents the resolution level of mesh
-# try do construct mid points in order to get exact number of nodes and elements
-#Transfinite Surface: gmsh.model.mesh.setTransfiniteSurface(plane_surface) ensures that the mesh is regular and structured, giving predictable element distribution.
-# apply transfinite on 1D and 3D
-
-#todo make sure of a tool to arrange the points well try .dof and .mesh_coordina.. and others
-
-
-
-#anmerkungen: boundaries increase elemnents not the nodes
-# 2D mesh is done and temperatures at [25, :] is done
-# apply for stresses to plot simulated stresses against analytical ones
-# to determine the thickness at each node self.mesh.geometry.x
