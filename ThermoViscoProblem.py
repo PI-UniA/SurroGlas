@@ -23,6 +23,12 @@ from ufl import conditional, ge, lt
 from dolfinx.fem import (Constant,Function, FunctionSpace, assemble, Expression)
 import ufl
 from ufl import (inner, tr, sym, Identity)
+from OutgoingDto import OutgoingDto,Elements
+import logging
+from geometry import read_from_msh
+
+gmshio.read_from_msh = read_from_msh
+logger = logging.getLogger("__main__")
 
 class ThermoViscoProblem:
     def __init__(self,mesh_path: str, problem_dim: int, time: tuple,
@@ -58,6 +64,11 @@ class ThermoViscoProblem:
             dt=self.dt, analy_parameters=  analy_parameters, mesh=self.mesh)
 
         self.jit_options = jit_options
+        
+        self.create_vtx_files = None
+        self.outgoing_dto = OutgoingDto()
+        self.execution_time = None
+
 
         return
     
@@ -236,11 +247,19 @@ class ThermoViscoProblem:
 
     def setup(self, dirichlet_bc_mech: bool = True,
               outfile_T: str = "visco",
-              outfile_sigma: str = "stresses") -> None:
+              outfile_sigma: str = "stresses",
+              create_vtx_files: bool = True) -> None:
+        
         self._set_initial_condition(temp_value=self.material_model.T_init)
+        self.create_vtx_files = create_vtx_files
+        
         if dirichlet_bc_mech:
             self._set_dirichlet_bc_mech()
-        self._write_initial_output(t=self.t)
+        
+        if self.create_vtx_files:
+            self._write_initial_output(t=self.t)
+            logger.debug('Create vtx-Files')
+        
         self._setup_weak_form_T()
         self._setup_solver_T()
         self._setup_weak_form_u()
@@ -528,7 +547,8 @@ class ThermoViscoProblem:
         return
     
     def solve_timestep(self,t) -> None:
-        print(f"t={t}")
+        #print(f"t={t}")
+        logger.debug(f"t={t}")
         self._solve_T()
         self._solve_Tf()
         self._solve_u()
@@ -543,7 +563,11 @@ class ThermoViscoProblem:
         self.avg_thermal_epsilon.append([np.average(self.functions["thermal_strain"].x.array[:])])
         self.avg_t_epsilon.append([np.average(self.functions["total_strain"].x.array[:])])
         self.avg_t_sigma.append([np.average(self.functions_next["sigma"].x.array[:])])
-        self._write_output()
+        
+        #self._append_outgoing_dto()
+        
+        if self.create_vtx_files:
+            self._write_output()
 
         
         
@@ -586,7 +610,7 @@ class ThermoViscoProblem:
         # Extract sigma_xx as the first component
         self.sigma_xx = s_array_reshaped[0,:,:]
         #extract the mid_plane
-        print(self.sigma_xx[:,2])
+        #print(self.sigma_xx[:,2])
         self.avg_t_sigma_mid.append([np.average(self.sigma_xx[25,:])])
         
 
@@ -853,23 +877,29 @@ class ThermoViscoProblem:
         self.avg_t_sigma_mid= []
         self.temperature_time_array = []
         if self.mesh.comm.rank == 0:
-            print("Starting solve")
+            # print("Starting solve")
+            logger.debug("Starting solve")
             t_start = time()
         for _ in range(self.n_steps):
             self.t += self.dt
             self.solve_timestep(t=self.t)
             self._to_np_arrays(t=self.t)
+            self._append_outgoing_dto()
+            
         if self.mesh.comm.rank == 0:
             t_end = time()
-            print(f"Solve finished in {t_end - t_start} seconds.")
+            # print(f"Solve finished in {t_end - t_start} seconds.")
+            logger.debug(f"Solve finished in {t_end - t_start} seconds.")
+            self.execution_time = t_end - t_start
         
         # Convert the list to a numpy array
-        self.time_series_array = np.array(self.temperature_time_array)
-        with open('temperature_time_series.txt', 'w') as f:
-            f.writelines(self.temperature_time_array)
-        self._finalize()
+        if self.create_vtx_files:
+            self.time_series_array = np.array(self.temperature_time_array)
+            with open('temperature_time_series.txt', 'w') as f:
+                f.writelines(self.temperature_time_array)
+            self._finalize()
 
-        return
+        return self.outgoing_dto
 
 
     def _finalize(self) -> None:
@@ -882,4 +912,15 @@ class ThermoViscoProblem:
         #self.outfile_thermal_strain.close()
         self.outfile_elastic_strain.close()
 
+        return
+
+    def _append_outgoing_dto(self) -> None:
+        """ Store the temperature, stress and thickness data in the outgoingDto-"""
+        elem = Elements()
+        elem.Time = self.t
+        elem.Stress = self.functions_next["sigma"].x.array[:].tolist()
+        elem.Temperature = self.functions_current["T"].vector.array.tolist()
+        elem.Thickness = None
+        self.outgoing_dto.append(elem)
+        
         return

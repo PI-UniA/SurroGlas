@@ -1,4 +1,14 @@
+import typing
+from pathlib import Path
+
+from dolfinx import cpp as _cpp
+from dolfinx.cpp.graph import AdjacencyList_int32
+from dolfinx.mesh import Mesh
+
+from dolfinx.io import gmshio
+from mpi4py import MPI
 import gmsh
+
 def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
     gmsh.initialize()
     gmsh.model.add(f"Glass {dim}D mesh")
@@ -196,3 +206,31 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
     gmsh.model.occ.synchronize()
     gmsh.model.mesh.generate(dim=dim)
     gmsh.write(path)
+
+
+# Overwrite the gmshio.read_from_msh() function 
+def read_from_msh(
+    filename: typing.Union[str, Path],
+    comm: MPI.Comm,
+    rank: int = 0,
+    gdim: int = 3,
+    partitioner: typing.Optional[
+        typing.Callable[[MPI.Comm, int, int, AdjacencyList_int32], AdjacencyList_int32]
+    ] = None,
+) -> tuple[Mesh, _cpp.mesh.MeshTags_int32, _cpp.mesh.MeshTags_int32]:
+    try:
+        import gmsh
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError(
+            "No module named 'gmsh': dolfinx.io.gmshio.read_from_msh requires Gmsh.", name="gmsh"
+        )
+
+    if comm.rank == rank:
+        gmsh.initialize(interruptible=False)
+        gmsh.model.add("Mesh from file")
+        gmsh.merge(str(filename))
+        msh = gmshio.model_to_mesh(gmsh.model, comm, rank, gdim=gdim, partitioner=partitioner)
+        gmsh.finalize()
+        return msh
+    else:
+        return gmshio.model_to_mesh(gmsh.model, comm, rank, gdim=gdim, partitioner=partitioner)

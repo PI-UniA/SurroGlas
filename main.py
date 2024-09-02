@@ -3,6 +3,29 @@ from ThermoViscoProblem import ThermoViscoProblem
 import matplotlib.pyplot as plt
 import numpy as np
 from AnalyticalSoln import AnalyticalSoln
+from OutgoingDto import OutgoingDto
+import logging
+import numpy as np
+
+# Logging
+logger = logging.getLogger(__name__)
+logger.setLevel("DEBUG")
+logger.propagate = False
+formatter = logging.Formatter(
+    "{asctime} - {levelname} - {filename} - {message}",
+    style="{",
+    datefmt="%Y-%m-%d %H:%M",
+)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel("DEBUG")
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+file_handler = logging.FileHandler("app.log", mode="a", encoding="utf-8")
+file_handler.setLevel("INFO")
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 
 
@@ -29,70 +52,85 @@ Zone_name = "all"
 
 mesh_path = f"mesh{problem_dim}d.msh"
 
+# Create new mesh for simulation
 create_new_mesh = True
 
-if create_new_mesh:
-    create_mesh(path=mesh_path,dim=problem_dim, name=Zone_name, t_start=t_start, t_end=t_end)
+# Create VTX Files for visualization in Paraview
+create_vtx_files = False
 
-fe_config = {
-    "T":        {"element": "DG", "degree": 1},
-    "sigma":    {"element": "CG", "degree": 1},
-    "U":        {"element": "CG", "degree": 1}
-}
+try:
+    if create_new_mesh:
+        create_mesh(path=mesh_path,dim=problem_dim, name=Zone_name, t_start=t_start, t_end=t_end)
+        logger.info("Mesh created")
 
-model_params = {
-    # Volumetric heat dissipation
-    "f": 0.0,
-    # Radiative heat emissivity
-    "epsilon": 0.93,
-    # Boltzmann constant
-    "sigma": 5.670e-8,
-    # Ambient temperature
-    "T_ambient": 293.15,
-    # Initial temperature
-    "T_0": 923.15,
-    "alpha": 40.0,    #ideal 2
-    # Convective heat transfer coefficient (Controlling cooling rate)
-    "htc": 280.1,
-    # Material density
-    "rho": 2500.0,
-    # Specific heat capacity
-    "cp": 1433.0,
-    # Heat conduction coefficient
-    "k": 1.0,
-    "Hv": 457.05e3,
-    "H": 627.8e3,
-    "Tb": 869.0,
-    "Rg": 8.314,
-    "alpha_solid": 9.10e-6,
-    "alpha_liquid": 25.10e-6,
-    "Tf_init": 923.1,
-    "lambda_": 1.25,
-    "mu": 1.0,
-    "Young's_modulus": 72.0e9,
-    "Possion_ratio": 0.22,
-}
+    fe_config = {
+        "T":        {"element": "DG", "degree": 1},
+        "sigma":    {"element": "CG", "degree": 1},
+        "U":        {"element": "CG", "degree": 1}
+    }
 
-analytical_constants = {
-        "a":    0.2957,
-        "c":    1.676e3,
-        "Tb":   779.9,
-        "E0":   70e9,
-        "b":    6.937,
-        "H":    22.380e3,
-        "k":    -1.231e8,
-        "lambda_":   0.7012,
-}
+    model_params = {
+        # Volumetric heat dissipation
+        "f": 0.0,
+        # Radiative heat emissivity
+        "epsilon": 0.93,
+        # Boltzmann constant
+        "sigma": 5.670e-8,
+        # Ambient temperature
+        "T_ambient": 293.15,
+        # Initial temperature
+        "T_0": 923.15,
+        "alpha": 40.0,    #ideal 2
+        # Convective heat transfer coefficient (Controlling cooling rate)
+        "htc": 280.1,
+        # Material density
+        "rho": 2500.0,
+        # Specific heat capacity
+        "cp": 1433.0,
+        # Heat conduction coefficient
+        "k": 1.0,
+        "Hv": 457.05e3,
+        "H": 627.8e3,
+        "Tb": 869.0,
+        "Rg": 8.314,
+        "alpha_solid": 9.10e-6,
+        "alpha_liquid": 25.10e-6,
+        "Tf_init": 923.1,
+        "lambda_": 1.25,
+        "mu": 1.0,
+        "Young's_modulus": 72.0e9,
+        "Possion_ratio": 0.22,
+    }
 
-model = ThermoViscoProblem(mesh_path=mesh_path,problem_dim=problem_dim,
-                           config=fe_config,time=time,dt=dt,model_parameters=model_params, analy_parameters=analytical_constants,
-                           jit_options=jit_options)
+    analytical_constants = {
+            "a":    0.2957,
+            "c":    1.676e3,
+            "Tb":   779.9,
+            "E0":   70e9,
+            "b":    6.937,
+            "H":    22.380e3,
+            "k":    -1.231e8,
+            "lambda_":   0.7012,
+    }
 
-model.setup(dirichlet_bc_mech=True)
-model.solve()
+    model = ThermoViscoProblem(mesh_path=mesh_path,problem_dim=problem_dim,
+                            config=fe_config,time=time,dt=dt,model_parameters=model_params, analy_parameters=analytical_constants,
+                            jit_options=jit_options)
 
+    model.setup(dirichlet_bc_mech=True,create_vtx_files=create_vtx_files)
+    dto = model.solve()
+    result = dto.to_json()
+    
+    logger.info(f"Simulation executed. - Execution Time: {np.round(model.execution_time,6)}s")
+    logger.info(f"Number of elements in OutgoingDto: {dto.num_elements()}")
+    logger.info("Code executed")
 
-'''t_ = np.linspace(start=0.0, stop=10, num=100)
+except Exception as e:
+    logger.error(e, exc_info=True)
+    result = OutgoingDto().to_json()
+
+'''
+t_ = np.linspace(start=0.0, stop=10, num=100)
 
 #Variables of analytical equations in arrays over time loop
 
@@ -103,6 +141,7 @@ xi_ = [AnalyticalSoln.xi(t_i, constants=analytical_constants) for t_i in t_]
 epsilon_ = [AnalyticalSoln.epsilon(t_i, constants=analytical_constants) for t_i in t_]
 sigma_ = [AnalyticalSoln.stress(t_i, constants=analytical_constants) for t_i in t_]
 sigma_analytical_ = [AnalyticalSoln.sigma_analytical(t_i, constants=analytical_constants) for t_i in t_]
+
 
 fig, axs = plt.subplots(2, 3)
 
@@ -168,7 +207,9 @@ plt.grid(True)
 
 # Adjust layout
 plt.tight_layout()
-plt.show()'''
+plt.show()
+plt.savefig('figure.png')
+
 
 
 # convert numpy arrays into a fenics function, ask chatgbt
@@ -193,3 +234,4 @@ plt.show()'''
 # 2D mesh is done and temperatures at [25, :] is done
 # apply for stresses to plot simulated stresses against analytical ones
 # to determine the thickness at each node self.mesh.geometry.x
+'''
