@@ -8,6 +8,8 @@ from dolfinx.mesh import Mesh
 from dolfinx.io import gmshio
 from mpi4py import MPI
 import gmsh
+import numpy as np
+
 
 def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
     gmsh.initialize()
@@ -18,34 +20,35 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
     resolution_coarse = 3.0
 
     if dim == 1:
-        left = gmsh.model.occ.addPoint(0.0,0.0,0.0,resolution_fine,0)
-        gmsh.model.occ.addPoint(5.0,0.0,0.0,resolution_mid,1)
-        gmsh.model.occ.addPoint(25.0,0.0,0.0,resolution_coarse,2)
-        gmsh.model.occ.addPoint(45.0,0.0,0.0,resolution_mid,3)
-        right = gmsh.model.occ.addPoint(50.0,0.0,0.0,resolution_fine,4)
+        left = gmsh.model.occ.addPoint(-25.0, 0.0, 0.0, resolution_fine, 0)
+        gmsh.model.occ.addPoint(-20.0, 0.0, 0.0, resolution_mid, 1)
+        gmsh.model.occ.addPoint(0.0, 0.0, 0.0, resolution_coarse, 2)
+        gmsh.model.occ.addPoint(20.0, 0.0, 0.0, resolution_mid, 3)
+        right = gmsh.model.occ.addPoint(25.0, 0.0, 0.0, resolution_fine, 4)
 
-        gmsh.model.occ.addLine(0,1,0)
-        gmsh.model.occ.addLine(1,2,1)
-        gmsh.model.occ.addLine(2,3,2)
-        gmsh.model.occ.addLine(3,4,3)
+        gmsh.model.occ.addLine(0, 1, 0)
+        gmsh.model.occ.addLine(1, 2, 1)
+        gmsh.model.occ.addLine(2, 3, 2)
+        gmsh.model.occ.addLine(3, 4, 3)
 
         gmsh.model.occ.synchronize()
 
         gmsh.model.addPhysicalGroup(0, [left], 10)
         gmsh.model.addPhysicalGroup(0, [right], 12)
 
-        gmsh.model.addPhysicalGroup(1, [0,1,2,3], 0)
+        gmsh.model.addPhysicalGroup(1, [0, 1, 2, 3], 0)
         gmsh.model.setPhysicalName(1, 0, "cells")
-    
+
     elif dim == 2:
+
         w = 20
         h = 4
         # width and thickness of the mesh
         # Add points for the rectangle corners
-        p1 = gmsh.model.occ.addPoint(0.0, 0.0, 0.0, resolution_mid)
-        p2 = gmsh.model.occ.addPoint(w, 0.0, 0.0, resolution_mid)
-        p3 = gmsh.model.occ.addPoint(w, h, 0.0, resolution_mid)
-        p4 = gmsh.model.occ.addPoint(0.0, h, 0.0, resolution_mid)
+        p1 = gmsh.model.occ.addPoint(-25.0, -5.0, 0.0, resolution_mid)
+        p2 = gmsh.model.occ.addPoint(25.0, -5.0, 0.0, resolution_mid)
+        p3 = gmsh.model.occ.addPoint(25.0, 5.0, 0.0, resolution_mid)
+        p4 = gmsh.model.occ.addPoint(-25.0, 5.0, 0.0, resolution_mid)
 
         # Create lines to form the boundaries of the rectangle
         bottom_line = gmsh.model.occ.addLine(p1, p2)
@@ -54,7 +57,9 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
         left_line = gmsh.model.occ.addLine(p4, p1)
 
         # Create a loop and a plane surface
-        curve_loop = gmsh.model.occ.addCurveLoop([bottom_line, right_line, top_line, left_line])
+        curve_loop = gmsh.model.occ.addCurveLoop(
+            [bottom_line, right_line, top_line, left_line]
+        )
         plane_surface = gmsh.model.occ.addPlaneSurface([curve_loop])
 
         # Synchronize the CAD kernel with the Gmsh model
@@ -62,63 +67,94 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
 
         # Set the number of divisions (elements) along each line
         gmsh.model.mesh.setTransfiniteCurve(bottom_line, 51)  # Bottom line: nodes
-        gmsh.model.mesh.setTransfiniteCurve(right_line, 11)   # Right line: nodes
+        gmsh.model.mesh.setTransfiniteCurve(right_line, 11)  # Right line: nodes
         gmsh.model.mesh.setTransfiniteCurve(top_line, 51)  # Bottom line: nodes
-        gmsh.model.mesh.setTransfiniteCurve(left_line, 11)   # Right line: nodes
-  
+        gmsh.model.mesh.setTransfiniteCurve(left_line, 11)  # Right line: nodes
 
         # Set a transfinite surface (ensures regular meshing)
         gmsh.model.mesh.setTransfiniteSurface(plane_surface)
-        gmsh.model.mesh.setRecombine(2, plane_surface)  # Optional: make the mesh quadrilateral
-        
-        # Add physical groups for the boundaries
-        gmsh.model.addPhysicalGroup(1, [left_line], 10)  # Physical group for the bottom line
-        gmsh.model.addPhysicalGroup(1, [top_line], 11)   # Physical group for the right line
-        gmsh.model.addPhysicalGroup(1, [right_line], 12)     # Physical group for the top line
-        gmsh.model.addPhysicalGroup(1, [bottom_line], 13)    # Physical group for the left line
-        
-        gmsh.model.addPhysicalGroup(2, [plane_surface], 0)
+        gmsh.model.mesh.setRecombine(
+            2, plane_surface
+        )  # Optional: make the mesh quadrilateral
 
+        # Add physical groups for the boundaries
+        gmsh.model.addPhysicalGroup(
+            1, [left_line], 10
+        )  # Physical group for the bottom line
+        gmsh.model.addPhysicalGroup(
+            1, [top_line], 11
+        )  # Physical group for the right line
+        gmsh.model.addPhysicalGroup(
+            1, [right_line], 12
+        )  # Physical group for the top line
+        gmsh.model.addPhysicalGroup(
+            1, [bottom_line], 13
+        )  # Physical group for the left line
+
+        gmsh.model.addPhysicalGroup(2, [plane_surface], 0)
 
     elif dim == 3:
         # Define zones with different dimensions and time zones
         zones = [
-            {"dims": (20, 5, 0.005),"name": "A", "t_start": 0, "t_end": 90},      # Zone A
-            {"dims": (30, 5, 0.005),"name": "B1","t_start": 90,"t_end": 100},      # Zone B1
-            {"dims": (10, 5, 0.005),"name": "B2", "t_start": 100,"t_end": 120},     # Zone B2
-            {"dims": (20, 5, 0.005),"name": "C","t_start": 120, "t_end": 130},    # Zone C
+            {"dims": (20, 5, 0.005), "name": "A", "t_start": 0, "t_end": 90},  # Zone A
+            {
+                "dims": (30, 5, 0.005),
+                "name": "B1",
+                "t_start": 90,
+                "t_end": 100,
+            },  # Zone B1
+            {
+                "dims": (10, 5, 0.005),
+                "name": "B2",
+                "t_start": 100,
+                "t_end": 120,
+            },  # Zone B2
+            {
+                "dims": (20, 5, 0.005),
+                "name": "C",
+                "t_start": 120,
+                "t_end": 130,
+            },  # Zone C
         ]
 
         # apply simulation over all zones
         if name == "all":
-                # Filter zones based on the specified time range
-                filtered_zones = [zone for zone in zones if zone["t_start"] < t_end and zone["t_end"] > t_start]
-                
-                if not filtered_zones:
-                    raise ValueError(f"No zones found within the time range ({t_start} - {t_end}).")
+            # Filter zones based on the specified time range
+            filtered_zones = [
+                zone
+                for zone in zones
+                if zone["t_start"] < t_end and zone["t_end"] > t_start
+            ]
 
-                # Accumulate dimensions for the filtered zones
-                accumulated_length = sum(zone["dims"][0] for zone in filtered_zones)
-                width = filtered_zones[0]["dims"][1]  # Assuming width and height are the same across all zones
-                height = filtered_zones[0]["dims"][2]
+            if not filtered_zones:
+                raise ValueError(
+                    f"No zones found within the time range ({t_start} - {t_end})."
+                )
 
-                accumulated_t_start = min(zone["t_start"] for zone in filtered_zones)
-                accumulated_t_end = max(zone["t_end"] for zone in filtered_zones)
-                
-                # Adjust the specified time range if needed
-                if t_start < accumulated_t_start:
-                    t_start = accumulated_t_start
-                if t_end > accumulated_t_end:
-                    t_end = accumulated_t_end
+            # Accumulate dimensions for the filtered zones
+            accumulated_length = sum(zone["dims"][0] for zone in filtered_zones)
+            width = filtered_zones[0]["dims"][
+                1
+            ]  # Assuming width and height are the same across all zones
+            height = filtered_zones[0]["dims"][2]
 
-                zone = {
-                    "dims": (accumulated_length, width, height),
-                    "name": "all",
-                    "t_start": accumulated_t_start,
-                    "t_end": accumulated_t_end
-                }
-        
-        # apply simulation for each zone individually   
+            accumulated_t_start = min(zone["t_start"] for zone in filtered_zones)
+            accumulated_t_end = max(zone["t_end"] for zone in filtered_zones)
+
+            # Adjust the specified time range if needed
+            if t_start < accumulated_t_start:
+                t_start = accumulated_t_start
+            if t_end > accumulated_t_end:
+                t_end = accumulated_t_end
+
+            zone = {
+                "dims": (accumulated_length, width, height),
+                "name": "all",
+                "t_start": accumulated_t_start,
+                "t_end": accumulated_t_end,
+            }
+
+        # apply simulation for each zone individually
         else:
             # Find the zone that matches the provided zone_name
             zone = next((z for z in zones if z["name"] == name), None)
@@ -127,8 +163,10 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
 
             # Check if the specified time range falls within the zone's time interval
             if t_start < zone["t_start"] or t_end > zone["t_end"]:
-                raise ValueError(f"Specified time range ({t_start} - {t_end}) is outside of Zone {name}'s time interval ({zone['t_start']} - {zone['t_end']}).")
-        
+                raise ValueError(
+                    f"Specified time range ({t_start} - {t_end}) is outside of Zone {name}'s time interval ({zone['t_start']} - {zone['t_end']})."
+                )
+
         length, width, height = zone["dims"]
         name = zone["name"]
 
@@ -160,15 +198,29 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
             l12 = gmsh.model.occ.addLine(p8, p5)
 
             # Create surfaces (faces of the box) (2D)
-            front_face = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop([l1, l6, l9, l5])])
-            back_face = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop([l3, l7, l11, l8])])
-            left_face = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop([l4, l5, l12, l8])])
-            right_face = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop([l2, l6, l10, l7])])
-            top_face = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop([l9, l10, l11, l12])])
-            bottom_face = gmsh.model.occ.addPlaneSurface([gmsh.model.occ.addCurveLoop([l1, l2, l3, l4])])
+            front_face = gmsh.model.occ.addPlaneSurface(
+                [gmsh.model.occ.addCurveLoop([l1, l6, l9, l5])]
+            )
+            back_face = gmsh.model.occ.addPlaneSurface(
+                [gmsh.model.occ.addCurveLoop([l3, l7, l11, l8])]
+            )
+            left_face = gmsh.model.occ.addPlaneSurface(
+                [gmsh.model.occ.addCurveLoop([l4, l5, l12, l8])]
+            )
+            right_face = gmsh.model.occ.addPlaneSurface(
+                [gmsh.model.occ.addCurveLoop([l2, l6, l10, l7])]
+            )
+            top_face = gmsh.model.occ.addPlaneSurface(
+                [gmsh.model.occ.addCurveLoop([l9, l10, l11, l12])]
+            )
+            bottom_face = gmsh.model.occ.addPlaneSurface(
+                [gmsh.model.occ.addCurveLoop([l1, l2, l3, l4])]
+            )
 
             # Create a volume (the box itself) (3D)
-            box = gmsh.model.occ.addSurfaceLoop([front_face, back_face, left_face, right_face, top_face, bottom_face])
+            box = gmsh.model.occ.addSurfaceLoop(
+                [front_face, back_face, left_face, right_face, top_face, bottom_face]
+            )
             volume = gmsh.model.occ.addVolume([box])
 
             gmsh.model.occ.synchronize()
@@ -197,18 +249,18 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
             gmsh.model.setPhysicalName(2, 600 + i, f"Bottom_Face_{name}")
 
             # Shift coordinates for the next zone
-            #shift_x = length
-            #gmsh.model.occ.translate([(3, volume)], shift_x * i, 0, 0)
+            # shift_x = length
+            # gmsh.model.occ.translate([(3, volume)], shift_x * i, 0, 0)
 
     # Generate mesh
-                    # Visualize the mesh
-    
+    # Visualize the mesh
+
     gmsh.model.occ.synchronize()
     gmsh.model.mesh.generate(dim=dim)
     gmsh.write(path)
 
 
-# Overwrite the gmshio.read_from_msh() function 
+# Overwrite the gmshio.read_from_msh() function
 def read_from_msh(
     filename: typing.Union[str, Path],
     comm: MPI.Comm,
@@ -222,15 +274,20 @@ def read_from_msh(
         import gmsh
     except ModuleNotFoundError:
         raise ModuleNotFoundError(
-            "No module named 'gmsh': dolfinx.io.gmshio.read_from_msh requires Gmsh.", name="gmsh"
+            "No module named 'gmsh': dolfinx.io.gmshio.read_from_msh requires Gmsh.",
+            name="gmsh",
         )
 
     if comm.rank == rank:
         gmsh.initialize(interruptible=False)
         gmsh.model.add("Mesh from file")
         gmsh.merge(str(filename))
-        msh = gmshio.model_to_mesh(gmsh.model, comm, rank, gdim=gdim, partitioner=partitioner)
+        msh = gmshio.model_to_mesh(
+            gmsh.model, comm, rank, gdim=gdim, partitioner=partitioner
+        )
         gmsh.finalize()
         return msh
     else:
-        return gmshio.model_to_mesh(gmsh.model, comm, rank, gdim=gdim, partitioner=partitioner)
+        return gmshio.model_to_mesh(
+            gmsh.model, comm, rank, gdim=gdim, partitioner=partitioner
+        )
