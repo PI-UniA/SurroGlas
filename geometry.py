@@ -40,9 +40,6 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
         gmsh.model.setPhysicalName(1, 0, "cells")
 
     elif dim == 2:
-
-        w = 20
-        h = 4
         # width and thickness of the mesh
         # Add points for the rectangle corners
         p1 = gmsh.model.occ.addPoint(-25.0, -5.0, 0.0, resolution_mid)
@@ -133,9 +130,7 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
 
             # Accumulate dimensions for the filtered zones
             accumulated_length = sum(zone["dims"][0] for zone in filtered_zones)
-            width = filtered_zones[0]["dims"][
-                1
-            ]  # Assuming width and height are the same across all zones
+            width = filtered_zones[0]["dims"][1]  # Assuming width and height are the same across all zones
             height = filtered_zones[0]["dims"][2]
 
             accumulated_t_start = min(zone["t_start"] for zone in filtered_zones)
@@ -171,7 +166,7 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
         name = zone["name"]
 
         # Create a box mesh with given dimensions and time zone
-        for i, zone in enumerate(zones):
+        for zone in filtered_zones:
 
             # Define points for the box (0D)
             p1 = gmsh.model.occ.addPoint(0.0, 0.0, 0.0, resolution_mid)
@@ -226,27 +221,22 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
             gmsh.model.occ.synchronize()
 
             # Add a physical group for the current zone
-            volume_tag = gmsh.model.addPhysicalGroup(3, [volume], 1000 + i)
-            gmsh.model.setPhysicalName(3, 1000 + i, f"Zone_{name}")
+            volume_tag = gmsh.model.addPhysicalGroup(3, [volume], 1000)
+            gmsh.model.setPhysicalName(3, 1000, f"Zone_{name}")
 
             # Add physical groups for the faces of the box
-            gmsh.model.addPhysicalGroup(2, [front_face], 100 + i)
-            gmsh.model.setPhysicalName(2, 100 + i, f"Front_Face_{name}")
+            gmsh.model.addPhysicalGroup(2, [front_face], 10)
 
-            gmsh.model.addPhysicalGroup(2, [back_face], 200 + i)
-            gmsh.model.setPhysicalName(2, 200 + i, f"Back_Face_{name}")
+            gmsh.model.addPhysicalGroup(2, [back_face], 11)
 
-            gmsh.model.addPhysicalGroup(2, [left_face], 300 + i)
-            gmsh.model.setPhysicalName(2, 300 + i, f"Left_Face_{name}")
+            gmsh.model.addPhysicalGroup(2, [left_face], 12)
 
-            gmsh.model.addPhysicalGroup(2, [right_face], 400 + i)
-            gmsh.model.setPhysicalName(2, 400 + i, f"Right_Face_{name}")
+            gmsh.model.addPhysicalGroup(2, [right_face], 13)
 
-            gmsh.model.addPhysicalGroup(2, [top_face], 500 + i)
-            gmsh.model.setPhysicalName(2, 500 + i, f"Top_Face_{name}")
+            gmsh.model.addPhysicalGroup(2, [top_face], 14)
 
-            gmsh.model.addPhysicalGroup(2, [bottom_face], 600 + i)
-            gmsh.model.setPhysicalName(2, 600 + i, f"Bottom_Face_{name}")
+            gmsh.model.addPhysicalGroup(2, [bottom_face], 15)
+
 
             # Shift coordinates for the next zone
             # shift_x = length

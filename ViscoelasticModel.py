@@ -104,7 +104,7 @@ class ViscoelasticModel:
     
     def _init_expressions(self,functions: dict, functions_next: dict,
                           functions_current: dict, functions_previous: dict,
-                          functionSpaces: dict, dt: float, analy_parameters:dict, mesh: Mesh) -> None:
+                          functionSpaces: dict, dt: float) -> None:
         """
         Initialize the FEniCS expressions that are needed
         to compute the derived quantities defined in Nielsen et al.
@@ -171,7 +171,13 @@ class ViscoelasticModel:
             
         elif self.dim == 2:
             self.expressions["volumetric_strain"] = Expression(
-                (self.elastic_epsilon(functions["U"])[0, 0] + self.elastic_epsilon(functions["U"])[1, 1]),
+                (1/2)*(self.elastic_epsilon(functions["U"])[0, 0] + self.elastic_epsilon(functions["U"])[1, 1]),
+                functionSpaces["T"].element.interpolation_points()
+            )
+            
+        elif self.dim == 3:
+            self.expressions["volumetric_strain"] = Expression(
+                (1/3)*(self.elastic_epsilon(functions["U"])[0, 0] + self.elastic_epsilon(functions["U"])[1, 1] + self.elastic_epsilon(functions["U"])[2, 2]),
                 functionSpaces["T"].element.interpolation_points()
             )
         #elastic strain (assuming linear elasticity)

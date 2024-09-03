@@ -41,11 +41,11 @@ t_start = 0.0
 t_end = 20.0
 time = (t_start, t_end)
 
-dt = 0.05
+dt = 0.1
 t = t_start
 
 # Problem dimensions (1D, 2D, or 3D)
-problem_dim = 2
+problem_dim = 3
 
 # Name of the glass zone 
 Zone_name = "all"
@@ -208,4 +208,4 @@ plt.grid(True)
 # Adjust layout
 plt.tight_layout()
 plt.show()
-plt.savefig('figure.png')
+plt.savefig('figure.png')'''

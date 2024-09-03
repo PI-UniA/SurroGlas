@@ -61,7 +61,7 @@ class ThermoViscoProblem:
             functions_current=self.functions_current,
             functions_previous=self.functions_previous,
             functions_next=self.functions_next,
-            dt=self.dt, analy_parameters=  analy_parameters, mesh=self.mesh)
+            dt=self.dt)
 
         self.jit_options = jit_options
         
@@ -83,7 +83,13 @@ class ThermoViscoProblem:
             self.bc_markers["top"]      = self.facet_tags.find(11)
             self.bc_markers["right"]    = self.facet_tags.find(12)
             self.bc_markers["bottom"]   = self.facet_tags.find(13)
-
+        elif self.dim == 3:
+            self.bc_markers["front"]    = self.facet_tags.find(10)
+            self.bc_markers["back"]     = self.facet_tags.find(11)
+            self.bc_markers["left"]     = self.facet_tags.find(12)
+            self.bc_markers["right"]    = self.facet_tags.find(13)
+            self.bc_markers["top"]      = self.facet_tags.find(14)
+            self.bc_markers["bottom"]   = self.facet_tags.find(15)
 
             
         return
@@ -481,8 +487,8 @@ class ThermoViscoProblem:
         opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
         self.ksp.setFromOptions()
         
+    
     # linear elasticity equation #
-
     def _set_dirichlet_bc_mech(self) -> None:
           
         facet_dim = self.mesh.topology.dim-1
@@ -507,6 +513,23 @@ class ThermoViscoProblem:
                         fem.dirichletbc(ScalarType([0.0,0.0]), right_bc, self.functionSpaces["U"]),
                         fem.dirichletbc(ScalarType([0.0,0.0]), bottom_bc, self.functionSpaces["U"])
                     ]
+            
+        elif self.dim == 3:
+            front_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["front"])
+            back_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["back"])
+            left_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["left"])
+            right_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["right"])
+            top_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["top"])
+            bottom_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["bottom"])
+            
+            self.bc = [ 
+                        fem.dirichletbc(ScalarType((0.0,0.0,0.0)), front_bc, self.functionSpaces["U"]),
+                        fem.dirichletbc(ScalarType((0.0,0.0,0.0)), back_bc, self.functionSpaces["U"]),
+                        fem.dirichletbc(ScalarType((0.0,0.0,0.0)), left_bc, self.functionSpaces["U"]),
+                        fem.dirichletbc(ScalarType((0.0,0.0,0.0)), right_bc, self.functionSpaces["U"]),
+                        fem.dirichletbc(ScalarType((0.0,0.0,0.0)), top_bc, self.functionSpaces["U"]),
+                        fem.dirichletbc(ScalarType((0.0,0.0,0.0)), bottom_bc, self.functionSpaces["U"])
+                    ]
     
     def _setup_weak_form_u(self) -> None:
         
@@ -527,7 +550,14 @@ class ThermoViscoProblem:
             # Weak form: Standard elasticity problem
             self.a = inner(self.material_model.elastic_sigma(self.u_trial), self.material_model.elastic_epsilon(self.v_test)) * dx
             self.L = dot(self.ss, self.v_test) * dx + dot(self.traction,self.v_test) * ds
-            
+
+        elif self.dim == 3:
+            self.ss = ufl.as_vector((0.0,-x[1], -x[2]))  # Using position-dependent body forces
+            self.traction = Constant(self.mesh, ScalarType((0.0,0.0,0.0))) # traction force
+            # Weak form: Standard elasticity problem
+            self.a = inner(self.material_model.elastic_sigma(self.u_trial), self.material_model.elastic_epsilon(self.v_test)) * dx
+            self.L = dot(self.ss, self.v_test) * dx + dot(self.traction,self.v_test) * ds
+
     def _setup_solver_u(self) -> None:
     
         self.u_problem = fem.petsc.LinearProblem(self.a, self.L, u=self.functions["U"], bcs=self.bc, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
@@ -607,21 +637,57 @@ class ThermoViscoProblem:
         Convert the fenics functions into numpy arrays 
         for easier avalibility
         """  
-        #number of divisions or elements in the mesh
-        nx=50
-        ny=10
-        
-        "stress functions into numpy arrays"
-        s_array= self.functions_next["sigma"].x.array[:]
-        # 4 tensor components, nodes at x position and y position
-        s_array_reshaped = s_array.reshape((4, (nx+1), (ny+1)))
-        # Extract sigma_xx as the first component
-        self.sigma_xx = s_array_reshaped[0,:,:]
-        self.avg_t_sigma_mid.append([np.average(self.sigma_xx[:,5])])
-        
-        "temperature functions into numpy arrays"
-        T_array= self.functions_current["T"].x.array[:]
-        T_array_reshaped = T_array.reshape((nx+1), (ny+1))
+        if self.dim==1:
+            #number of divisions or elements in the mesh
+            nx=50     
+            "stress functions into numpy arrays"
+            s_array= self.functions_next["sigma"].x.array[:]
+            # 1 tensor component, nodes at x position
+            self.sigma_xx = s_array # in 1D sigma_tensor=sigma_xx
+            self.avg_t_sigma_mid.append([np.average(self.sigma_xx[:])])
+  
+            "temperature functions into numpy arrays"
+            T_array= self.functions_current["T"].x.array[:]
+
+      
+        elif self.dim==2:
+            #number of divisions or elements in the mesh
+            nx=50
+            ny=10
+            
+            "stress functions into numpy arrays"
+            s_array= self.functions_next["sigma"].x.array[:]
+            # 4 tensor components, nodes at x position and y position
+            s_array_reshaped = s_array.reshape((4, (nx+1), (ny+1)))
+            # Extract sigma_xx as the first component
+            self.sigma_xx = s_array_reshaped[0,:,:]
+            
+            # take average sigma_xx at mid_plane and plot into main.py
+            self.avg_t_sigma_mid.append([np.average(self.sigma_xx[:,5])])
+            
+            "temperature functions into numpy arrays"
+            T_array= self.functions_current["T"].x.array[:]
+            T_array_reshaped = T_array.reshape((nx+1), (ny+1))
+
+        elif self.dim==3:
+            #number of divisions or elements in the mesh
+            nx=50
+            ny=10
+            nz=10
+            
+            "stress functions into numpy arrays"
+            s_array= self.functions_next["sigma"].x.array[:]
+            # 4 tensor components, nodes at x position and y position
+            s_array_reshaped = s_array.reshape((4, (nx+1), (ny+1)))
+            # Extract sigma_xx as the first component
+            self.sigma_xx = s_array_reshaped[0,:,:]
+            
+            # take average sigma_xx at mid_plane and plot into main.py
+            self.avg_t_sigma_mid.append([np.average(self.sigma_xx[:,5])])
+            
+            "temperature functions into numpy arrays"
+            T_array= self.functions_current["T"].x.array[:]
+            T_array_reshaped = T_array.reshape((nx+1), (ny+1))
     
         "position in 3 spatial coordinates"
         position = self.mesh.geometry.x
@@ -906,7 +972,7 @@ class ThermoViscoProblem:
         for _ in range(self.n_steps):
             self.t += self.dt
             self.solve_timestep(t=self.t)
-            self._to_np_arrays(t=self.t)
+            #self._to_np_arrays(t=self.t)
             self._append_outgoing_dto()
 
         if self.mesh.comm.rank == 0:
