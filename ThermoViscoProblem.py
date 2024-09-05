@@ -227,6 +227,7 @@ class ThermoViscoProblem:
         self.functions_next["total_d_partial"] = Function(self.functionSpaces["sigma"], name="Viscoelastic_part")
         self.functions_next["total_tilde_partial"] = Function(self.functionSpaces["sigma"], name="Structural_relaxation")
         self.functions_next["sigma_next_adjusted"] = Function(self.functionSpaces["sigma"])
+        self.functions["stiffness_matrix"] = Function(self.functionSpaces["sigma"])
         
          
         self.functions["U"] = Function(self.functionSpaces["U"], name="Displacement")
@@ -442,9 +443,9 @@ class ThermoViscoProblem:
             # Right hand side (heat source)
             - (f) * self.v * dx
             # Radiation
-            + 3e-4*((sigma * epsilon)) * (self.functions_current["T"]**4 - T_ambient**4) * self.v * ds
+            + 3e-3*((sigma * epsilon)) * (self.functions_current["T"]**4 - T_ambient**4) * self.v * ds
             # Convection
-            + 3e-4*(htc) * (self.functions_current["T"] - T_ambient) * self.v * ds
+            + 3e-3*(htc) * (self.functions_current["T"] - T_ambient) * self.v * ds
             )
         )
 
@@ -530,6 +531,7 @@ class ThermoViscoProblem:
                         fem.dirichletbc(ScalarType((0.0,0.0,0.0)), top_bc, self.functionSpaces["U"]),
                         fem.dirichletbc(ScalarType((0.0,0.0,0.0)), bottom_bc, self.functionSpaces["U"])
                     ]
+        return
     
     def _setup_weak_form_u(self) -> None:
         
@@ -540,29 +542,31 @@ class ThermoViscoProblem:
         if self.dim == 1:
             self.ss = ufl.as_vector([(x[0])])  # Using position-dependent body forces
             self.traction = Constant(self.mesh, ScalarType([0.0])) # traction force
-            # Weak form: Standard elasticity problem
+            # Weak form: Standard elasticity problem (equilbrium equation for elasticty) −∇⋅σ=fin Ω
             self.a = inner(self.material_model.elastic_sigma(self.u_trial), self.material_model.elastic_epsilon(self.v_test)) * dx
             self.L = dot(self.ss, self.v_test) * dx + dot(self.traction,self.v_test) * ds
             
         elif self.dim == 2:
-            self.ss = ufl.as_vector((0.0,-x[1]))  # Using position-dependent body forces
+            self.ss = ufl.as_vector((0.0,x[1]))  # Using position-dependent body forces
             self.traction = Constant(self.mesh, ScalarType([0.0,0.0])) # traction force
-            # Weak form: Standard elasticity problem
+            # Weak form: Standard elasticity problem (equilbrium equation for elasticty) −∇⋅σ=fin Ω
             self.a = inner(self.material_model.elastic_sigma(self.u_trial), self.material_model.elastic_epsilon(self.v_test)) * dx
             self.L = dot(self.ss, self.v_test) * dx + dot(self.traction,self.v_test) * ds
 
         elif self.dim == 3:
-            self.ss = ufl.as_vector((0.0,-x[1], -x[2]))  # Using position-dependent body forces
+            self.ss = ufl.as_vector((0.0,0.0,x[2]))  # Using position-dependent body forces
             self.traction = Constant(self.mesh, ScalarType((0.0,0.0,0.0))) # traction force
-            # Weak form: Standard elasticity problem
+            # Weak form: Standard elasticity problem (equilbrium equation for elasticty) −∇⋅σ=fin Ω
             self.a = inner(self.material_model.elastic_sigma(self.u_trial), self.material_model.elastic_epsilon(self.v_test)) * dx
             self.L = dot(self.ss, self.v_test) * dx + dot(self.traction,self.v_test) * ds
+            
+        return
 
     def _setup_solver_u(self) -> None:
     
         self.u_problem = fem.petsc.LinearProblem(self.a, self.L, u=self.functions["U"], bcs=self.bc, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
        
-        
+        return
     def _update_values(self,current: Function,previous: Function) -> None:
         # Update ghost values across processes, relevant for MPI computations
         current.x.scatter_forward()
@@ -604,9 +608,6 @@ class ThermoViscoProblem:
         
         if self.create_vtx_files:
             self._write_output()
-
-        
-        
         # For some computations, functions_previous["T"] and functions_previous["displacement"] is needed
         # thus, we update only at the end of each timestep
         self._update_values(current=self.functions_current["T"],previous=self.functions_previous["T"])
@@ -871,6 +872,10 @@ class ThermoViscoProblem:
         self.functions["B"].interpolate(
             self.material_model.expressions["B"]
         )
+        
+        self.functions["stiffness_matrix"].interpolate(
+            self.material_model.expressions["stiffness_matrix"] 
+        ) 
 
         return
     
@@ -879,14 +884,12 @@ class ThermoViscoProblem:
         self.functions["volumetric_strain"].interpolate(
             self.material_model.expressions["volumetric_strain"]
         )
-        
 
         return
 
     def __update_T_next(self) -> None:
 
         self.functions_next["T"].interpolate(self.material_model.expressions["T_next"])
-
         
         return
     
@@ -948,7 +951,7 @@ class ThermoViscoProblem:
         self.functions["elastic_stress"].interpolate(
             self.material_model.expressions["elastic_stress"]
         )
-            
+
 
         return
     

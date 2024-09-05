@@ -51,7 +51,13 @@ class AnalyticalSoln():
             return 0
         else:
             return k * (a*t_ + b)**(-H/c)
-
+        
+    def de(t_: float, constants:dict):
+        """Calculate the derivative of strain infinitesimal increment,
+        Eq. A.4"""
+        de_dt, _ = quad(lambda t_: AnalyticalSoln.epsilon(t_, constants), 0, t_)
+        return de_dt
+        
     def stress(t_: float, constants:dict):
         """Integrate the uniaxial load by quadrature integration,
         Eq. A.4, 5 """

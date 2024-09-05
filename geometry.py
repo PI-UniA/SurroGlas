@@ -20,6 +20,7 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
     resolution_coarse = 3.0
 
     if dim == 1:
+        #length of glass plate (plane stress condition) z is small
         left = gmsh.model.occ.addPoint(-25.0, 0.0, 0.0, resolution_fine, 0)
         gmsh.model.occ.addPoint(-20.0, 0.0, 0.0, resolution_mid, 1)
         gmsh.model.occ.addPoint(0.0, 0.0, 0.0, resolution_coarse, 2)
@@ -40,7 +41,7 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
         gmsh.model.setPhysicalName(1, 0, "cells")
 
     elif dim == 2:
-        # width and thickness of the mesh
+        # length and width of the glass plate (plane stress condition)
         # Add points for the rectangle corners
         p1 = gmsh.model.occ.addPoint(-25.0, -5.0, 0.0, resolution_mid)
         p2 = gmsh.model.occ.addPoint(25.0, -5.0, 0.0, resolution_mid)
@@ -191,6 +192,26 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
             l10 = gmsh.model.occ.addLine(p6, p7)
             l11 = gmsh.model.occ.addLine(p7, p8)
             l12 = gmsh.model.occ.addLine(p8, p5)
+            
+            # Synchronize the geometry before applying transfinite settings
+            gmsh.model.occ.synchronize()
+            
+            # Apply transfinite meshing to each line
+            nx = 51
+            ny = 11
+            nz = 5
+            gmsh.model.mesh.setTransfiniteCurve(l1, nx)
+            gmsh.model.mesh.setTransfiniteCurve(l2, ny)
+            gmsh.model.mesh.setTransfiniteCurve(l3, nx)
+            gmsh.model.mesh.setTransfiniteCurve(l4, ny)
+            gmsh.model.mesh.setTransfiniteCurve(l5, nz)
+            gmsh.model.mesh.setTransfiniteCurve(l6, nz)
+            gmsh.model.mesh.setTransfiniteCurve(l7, nz)
+            gmsh.model.mesh.setTransfiniteCurve(l8, nz)
+            gmsh.model.mesh.setTransfiniteCurve(l9, nx)
+            gmsh.model.mesh.setTransfiniteCurve(l10, ny)
+            gmsh.model.mesh.setTransfiniteCurve(l11, nx)
+            gmsh.model.mesh.setTransfiniteCurve(l12, ny)
 
             # Create surfaces (faces of the box) (2D)
             front_face = gmsh.model.occ.addPlaneSurface(
@@ -211,6 +232,17 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
             bottom_face = gmsh.model.occ.addPlaneSurface(
                 [gmsh.model.occ.addCurveLoop([l1, l2, l3, l4])]
             )
+            
+            # Synchronize the geometry before applying transfinite settings
+            gmsh.model.occ.synchronize()
+            
+            # Apply transfinite meshing to surfaces
+            gmsh.model.mesh.setTransfiniteSurface(front_face)
+            gmsh.model.mesh.setTransfiniteSurface(back_face)
+            gmsh.model.mesh.setTransfiniteSurface(left_face)
+            gmsh.model.mesh.setTransfiniteSurface(right_face)
+            gmsh.model.mesh.setTransfiniteSurface(top_face)
+            gmsh.model.mesh.setTransfiniteSurface(bottom_face)
 
             # Create a volume (the box itself) (3D)
             box = gmsh.model.occ.addSurfaceLoop(
@@ -219,6 +251,9 @@ def create_mesh(path: str, dim: int, name: str, t_start: int, t_end: int):
             volume = gmsh.model.occ.addVolume([box])
 
             gmsh.model.occ.synchronize()
+            
+            # Apply transfinite meshing to the volume
+            gmsh.model.mesh.setTransfiniteVolume(volume)
 
             # Add a physical group for the current zone
             volume_tag = gmsh.model.addPhysicalGroup(3, [volume], 1000)

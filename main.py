@@ -38,14 +38,14 @@ jit_options = {
 
 # Time domain (whole time domain or for each zone)
 t_start = 0.0
-t_end = 20.0
+t_end = 50.0
 time = (t_start, t_end)
 
 dt = 0.1
 t = t_start
 
 # Problem dimensions (1D, 2D, or 3D)
-problem_dim = 3
+problem_dim = 1
 
 # Name of the glass zone 
 Zone_name = "all"
@@ -56,7 +56,7 @@ mesh_path = f"mesh{problem_dim}d.msh"
 create_new_mesh = True
 
 # Create VTX Files for visualization in Paraview
-create_vtx_files = False
+create_vtx_files = True
 
 try:
     if create_new_mesh:
@@ -64,7 +64,7 @@ try:
         logger.info("Mesh created")
 
     fe_config = {
-        "T":        {"element": "DG", "degree": 1},
+        "T":        {"element": "CG", "degree": 1},
         "sigma":    {"element": "CG", "degree": 1},
         "U":        {"element": "CG", "degree": 1}
     }
@@ -98,7 +98,7 @@ try:
         "Tf_init": 923.1,
         "lambda_": 1.25,
         "mu": 1.0,
-        "Young's_modulus": 72.0e9,
+        "Young's_modulus": 70.0e6, # from GP into MPa
         "Possion_ratio": 0.22,
     }
 
@@ -129,8 +129,8 @@ except Exception as e:
     logger.error(e, exc_info=True)
     result = OutgoingDto().to_json()
 
-'''
-t_ = np.linspace(start=0.0, stop=10, num=100)
+
+'''t_ = np.linspace(start=0.0, stop=50, num=500)
 
 #Variables of analytical equations in arrays over time loop
 
@@ -139,6 +139,7 @@ phi_ = [AnalyticalSoln.phi(t_i, constants=analytical_constants) for t_i in t_]
 E_ = [AnalyticalSoln.E(t_i, constants=analytical_constants) for t_i in t_]
 xi_ = [AnalyticalSoln.xi(t_i, constants=analytical_constants) for t_i in t_]
 epsilon_ = [AnalyticalSoln.epsilon(t_i, constants=analytical_constants) for t_i in t_]
+dedt = [AnalyticalSoln.de(t_i, constants=analytical_constants) for t_i in t_]
 sigma_ = [AnalyticalSoln.stress(t_i, constants=analytical_constants) for t_i in t_]
 sigma_analytical_ = [AnalyticalSoln.sigma_analytical(t_i, constants=analytical_constants) for t_i in t_]
 
@@ -177,7 +178,7 @@ plt.grid(True)
 
 #Strains
 plt.subplot(2, 3, 4)
-plt.plot(t_, epsilon_, label='Analytical results', color='r')
+plt.plot(t_, dedt, label='Analytical results', color='r')
 plt.plot(t_, model.avg_t_epsilon, label='Simulated results', color='b')
 plt.title('Plot of total strains vs Time')
 plt.xlabel('Time (t)')
@@ -209,3 +210,4 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 plt.savefig('figure.png')'''
+
