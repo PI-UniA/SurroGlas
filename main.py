@@ -80,7 +80,7 @@ try:
         "T_ambient": 293.15,
         # Initial temperature
         "T_0": 923.15,
-        "alpha": 40.0,    #ideal 2
+        "alpha": 15.0,    #ideal for 1d 2, for 2d 0.2
         # Convective heat transfer coefficient (Controlling cooling rate)
         "htc": 280.1,
         # Material density
