@@ -194,8 +194,11 @@ class ThermoViscoProblem:
 
         # Strains
         self.functions["thermal_strain"] = Function(self.functionSpaces["T"], name="thermal_strain")
+        self.functions_previous["thermal_strain"] = Function(self.functionSpaces["T"])
         self.functions["total_strain"] = Function(self.functionSpaces["sigma"], name="total_strain")
+        self.functions_previous["total_strain"] = Function(self.functionSpaces["sigma"])
         self.functions["deviatoric_strain"] = Function(self.functionSpaces["sigma"], name="deviatoric_strain")
+        self.functions_previous["deviatoric_strain"] = Function(self.functionSpaces["sigma"])
 
     
         # Stresses
@@ -379,32 +382,20 @@ class ThermoViscoProblem:
         # Define the right boundary (x = L)
         def right_boundary(x):
             return np.isclose(x[0], 25.0)
-        
-        def top_boundary(x):
-            return np.isclose(x[1], 5.0)
-
-        # Define the right boundary (x = L)
-        def bottom_boundary(x):
-            return np.isclose(x[1], -5.0)
 
         # Mark boundaries
         facet_indices, facet_markers = [], []
         boundary_facets_left = locate_entities_boundary(self.mesh, dim=0, marker=left_boundary)
         boundary_facets_right = locate_entities_boundary(self.mesh, dim=0, marker=right_boundary)
-        boundary_facets_top = locate_entities_boundary(self.mesh, dim=0, marker=top_boundary)
-        boundary_facets_bottom = locate_entities_boundary(self.mesh, dim=0, marker=bottom_boundary)
 
         # Combine facet indices and assign markers
-        facet_indices = np.concatenate([boundary_facets_left, boundary_facets_right, boundary_facets_bottom, boundary_facets_top])
+        facet_indices = np.concatenate([boundary_facets_left, boundary_facets_right])
         facet_markers = np.concatenate([
             np.full(len(boundary_facets_left), 1, dtype=np.int32),
             np.full(len(boundary_facets_right), 2, dtype=np.int32),
-            np.full(len(boundary_facets_bottom), 3, dtype=np.int32),
-            np.full(len(boundary_facets_top), 4, dtype=np.int32)
         ])
 
-        # Create MeshTags object for boundary facets (dim=1)
-        facet_tags = meshtags(self.mesh, 0, facet_indices, facet_markers)
+        facet_tags = meshtags(self.mesh, 0, np.array(facet_indices, dtype=np.int32), np.array(facet_markers, dtype=np.int32))
 
         # Measure for the left (ds(1)) and right (ds(2)) boundaries
         ds = Measure("exterior_facet", domain=self.mesh)
@@ -443,9 +434,11 @@ class ThermoViscoProblem:
             # Right hand side (heat source)
             - (f) * self.v * dx
             # Radiation
-            + 3e-3*((sigma * epsilon)) * (self.functions_current["T"]**4 - T_ambient**4) * self.v * ds
+            + 1.6e-3*((sigma * epsilon)) * (self.functions_current["T"]**4 - T_ambient**4) * self.v * ds
+            #+ 1.6e-3*((sigma * epsilon)) * (self.functions_current["T"]**4 - T_ambient**4) * self.v * ds(2)
             # Convection
-            + 3e-3*(htc) * (self.functions_current["T"] - T_ambient) * self.v * ds
+            + 1.6e-3*(htc) * (self.functions_current["T"] - T_ambient) * self.v * ds
+            #+ 1.6e-3*(htc) * (self.functions_current["T"] - T_ambient) * self.v * ds(2)
             )
         )
 
@@ -590,8 +583,8 @@ class ThermoViscoProblem:
         #print(f"t={t}")
         logger.debug(f"t={t}")
         self._solve_T()
-        self._solve_Tf()
         self._solve_u()
+        self._solve_Tf()
         self._solve_strains()
         self._solve_shifted_time()
         self._solve_stress()
@@ -604,32 +597,25 @@ class ThermoViscoProblem:
         self.avg_t_epsilon.append([np.average(self.functions["total_strain"].x.array[:])])
         self.avg_t_sigma.append([np.average(self.functions_next["sigma"].x.array[:])])
         
+        
         #self._append_outgoing_dto()
         
         if self.create_vtx_files:
             self._write_output()
         # For some computations, functions_previous["T"] and functions_previous["displacement"] is needed
         # thus, we update only at the end of each timestep
-        self._update_values(current=self.functions_current["T"],previous=self.functions_previous["T"])
+        
         
         #self._update_values(current=self.functions["phi_v"],previous=self.functions_previous["phi_v"])
         
-        self._update_values(current=self.functions_current["Tf_partial"],previous=self.functions_previous["Tf_partial"])
-        
-        self._update_values(current=self.functions_current["Tf"],previous=self.functions_previous["Tf"])
+
         #self._update_values(current=self.functions["U"],previous=self.functions_previous["U"])
         
-        self._update_values(current=self.functions_next["T"],previous=self.functions_current["T"])
+
         #self._update_values(current=self.functions_current["phi"],previous=self.functions_previous["phi"])
-        self._update_values(current=self.functions["xi"], previous=self.functions_previous["xi"])
+
         
-        self._update_values(current=self.functions["ds_partial"],previous=self.functions_previous["ds_partial"])
-        self._update_values(current=self.functions["dsigma_partial"],previous=self.functions_previous["dsigma_partial"])
-        self._update_values(current=self.functions_next["s_tilde_partial"],previous=self.functions_current["s_tilde_partial"])
-        self._update_values(current=self.functions_next["s_partial"],previous=self.functions_current["s_partial"]) 
-        self._update_values(current=self.functions_next["sigma_tilde_partial"],previous=self.functions_current["sigma_tilde_partial"])
-        self._update_values(current=self.functions_next["sigma_partial"],previous=self.functions_current["sigma_partial"])
-        self._update_values(current=self.functions_next["sigma"],previous=self.functions_current["sigma"])
+
 
         return
     
@@ -645,8 +631,15 @@ class ThermoViscoProblem:
             s_array= self.functions_next["sigma"].x.array[:]
             # 1 tensor component, nodes at x position
             self.sigma_xx = s_array # in 1D sigma_tensor=sigma_xx
-            self.avg_t_sigma_mid.append([np.average(self.sigma_xx[:])])
-  
+            #self.avg_t_sigma.append([np.average(self.sigma_xx[:])])
+            self.avg_t_sigma_mid.append([np.average(self.sigma_xx[25])])
+            self.avg_t_sigma_surface.append([np.average(self.sigma_xx[0])])
+            #avg_t_sigma_array = np.array(self.avg_t_sigma)
+
+            # Print the shape to confirm it is (500, 50) (or time_steps, spatial_points)
+            #print("Shape of avg_t_sigma_array:", self.avg_t_sigma)
+            #self.avg_t_sigma_mid_plane.append([np.average(self.sigma_xx[:,5])])
+            
             "temperature functions into numpy arrays"
             T_array= self.functions_current["T"].x.array[:]
 
@@ -692,7 +685,7 @@ class ThermoViscoProblem:
     
         "position in 3 spatial coordinates"
         position = self.mesh.geometry.x
-    
+
         #extract the mid_plane of x-axis
         #print(self.sigma_xx)
         #print(self.sigma_xx[25,:])
@@ -712,7 +705,7 @@ class ThermoViscoProblem:
         """
         _, converged = self.solver.solve(self.functions_current["T"])
         assert(converged)
-
+        self._update_values(current=self.functions_current["T"],previous=self.functions_previous["T"])
         return
     
     def _solve_u(self) -> None:
@@ -723,15 +716,7 @@ class ThermoViscoProblem:
         self.u_problem.solve()
 
         return
-    
-    def _solve_sigma_zero(self) -> None:
-        """
-        Solve the equilbrium of forces equation for each time step.
-        Update values and write current values to file.
-        """
-        self.s_problem.solve()
 
-        return
     
     def _solve_Tf(self) -> None:
         """
@@ -812,6 +797,8 @@ class ThermoViscoProblem:
         self.functions_current["Tf_partial"].interpolate(
             self.material_model.expressions["Tf_partial"]
         )
+        self._update_values(current=self.functions_current["Tf_partial"],previous=self.functions_previous["Tf_partial"])
+
         
         return
 
@@ -822,7 +809,8 @@ class ThermoViscoProblem:
         C.f. Nielsen et al., Eq. 26
         """
         self.functions_current["Tf"].interpolate(self.material_model.expressions["Tf"])
-
+                
+        self._update_values(current=self.functions_current["Tf"],previous=self.functions_previous["Tf"])
         return
     
     
@@ -834,7 +822,7 @@ class ThermoViscoProblem:
         self.functions["thermal_strain"].interpolate(
             self.material_model.expressions["thermal_strain"]
         )
-
+        self._update_values(current=self.functions_current["T"],previous=self.functions_previous["T"])
         return
     
 
@@ -890,7 +878,7 @@ class ThermoViscoProblem:
     def __update_T_next(self) -> None:
 
         self.functions_next["T"].interpolate(self.material_model.expressions["T_next"])
-        
+        self._update_values(current=self.functions_next["T"],previous=self.functions_current["T"])
         return
     
     def __update_phi(self) -> None:
@@ -919,6 +907,10 @@ class ThermoViscoProblem:
         self.functions_next["s_partial"].interpolate(
             self.material_model.expressions["s_partial_next"]
         )
+        self._update_values(current=self.functions["ds_partial"],previous=self.functions_previous["ds_partial"])
+
+        #self._update_values(current=self.functions_next["s_tilde_partial"],previous=self.functions_current["s_tilde_partial"])
+        #self._update_values(current=self.functions_next["s_partial"],previous=self.functions_current["s_partial"]) 
 
         return
     
@@ -933,7 +925,9 @@ class ThermoViscoProblem:
         self.functions_next["sigma_partial"].interpolate(
             self.material_model.expressions["sigma_partial_next"]
         )
-
+        self._update_values(current=self.functions["dsigma_partial"],previous=self.functions_previous["dsigma_partial"])
+        self._update_values(current=self.functions_next["sigma_tilde_partial"],previous=self.functions_current["sigma_tilde_partial"])
+        self._update_values(current=self.functions_next["sigma_partial"],previous=self.functions_current["sigma_partial"])
         return
     
 
@@ -951,7 +945,10 @@ class ThermoViscoProblem:
         self.functions["elastic_stress"].interpolate(
             self.material_model.expressions["elastic_stress"]
         )
-
+        #self._update_values(current=self.functions_next["sigma"],previous=self.functions_current["sigma"])
+        self._update_values(current=self.functions["xi"], previous=self.functions_previous["xi"])
+        self._update_values(current=self.functions["thermal_strain"], previous=self.functions_previous["thermal_strain"])
+        self._update_values(current=self.functions["U"], previous=self.functions_previous["U"])
 
         return
     
@@ -967,6 +964,7 @@ class ThermoViscoProblem:
         self.avg_t_epsilon= []
         self.avg_t_sigma= []
         self.avg_t_sigma_mid= []
+        self.avg_t_sigma_surface= []
         self.temperature_time_array = []
         if self.mesh.comm.rank == 0:
             # print("Starting solve")
@@ -975,7 +973,7 @@ class ThermoViscoProblem:
         for _ in range(self.n_steps):
             self.t += self.dt
             self.solve_timestep(t=self.t)
-            #self._to_np_arrays(t=self.t)
+            self._to_np_arrays(t=self.t)
             self._append_outgoing_dto()
 
         if self.mesh.comm.rank == 0:

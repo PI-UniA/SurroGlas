@@ -80,7 +80,7 @@ try:
         "T_ambient": 293.15,
         # Initial temperature
         "T_0": 923.15,
-        "alpha": 40.0,    #ideal 2
+        "alpha": 15.0,    #ideal for 1d 2, for 2d 0.2
         # Convective heat transfer coefficient (Controlling cooling rate)
         "htc": 280.1,
         # Material density
@@ -130,7 +130,8 @@ except Exception as e:
     result = OutgoingDto().to_json()
 
 
-'''t_ = np.linspace(start=0.0, stop=50, num=500)
+#t_ = np.logspace(start=-4, stop=2, num=500)
+t_ = np.linspace(start=0.0, stop=50, num=500)
 
 #Variables of analytical equations in arrays over time loop
 
@@ -144,70 +145,95 @@ sigma_ = [AnalyticalSoln.stress(t_i, constants=analytical_constants) for t_i in 
 sigma_analytical_ = [AnalyticalSoln.sigma_analytical(t_i, constants=analytical_constants) for t_i in t_]
 
 
-fig, axs = plt.subplots(2, 3)
+#fig, axs = plt.subplots(2, 3)
+#Nx = 50
+#x_vals = np.linspace(0, 50, Nx)
+#time_index = 100
+#avg_t_sigma_array = np.array(model.avg_t_sigma)
+#Stresses over distance
+#plt.plot(50, model.avg_t_sigma[10])
+#plt.xlabel("x-coordinate")
+#plt.ylabel("Stresses")
+#plt.legend(["$t={:.0f}$".format(ti) for ti in t[1::50//10]], ncol=2)
+#plt.show()
 
 # Temperatures
-plt.subplot(2, 3, 1)
-plt.plot(t_, T_, label='Analytical results', color='r')
-plt.plot(t_, model.avg_T, label='Simulated results', color='b')
-plt.title('Plot of Temperature vs Time')
-plt.xlabel('Time (t)')
+#plt.subplot(2, 3, 1)
+# Use Arial font and set font size globally
+plt.rcParams['font.family'] = "Times New Roman"
+plt.rcParams['font.size'] = 15
+
+plt.plot(t_, T_, label='Analytical results',color='lightgreen', linestyle='--')
+plt.plot(t_, model.avg_T, label='Simulated results', color='darkgreen')
+plt.xlabel('Time (s)')
 plt.ylabel('Tempertures (K)')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 # Shift functions
-plt.subplot(2, 3, 2)
-plt.plot(t_, phi_, label='Analytical results', color='r')
-plt.plot(t_, model.avg_phi, label='Simulated results', color='b')
-plt.title('Plot of shift function vs Time')
-plt.xlabel('Time (t)')
+#plt.subplot(2, 3, 2)
+plt.plot(t_, phi_, label='Analytical results',color='lightgreen', linestyle='--')
+plt.plot(t_, model.avg_phi, label='Simulated results', color='darkgreen')
+plt.xlabel('Time (s)')
 plt.ylabel('Shift function')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 #Scaled times
-plt.subplot(2, 3, 3)
-plt.plot(t_, xi_, label='Analytical results', color='r')
-plt.plot(t_, model.avg_xi, label='Simulated results', color='b')
-plt.title('Plot of scaled times vs Time')
-plt.xlabel('Time (t)')
-plt.ylabel('Scaled time')
+#plt.subplot(2, 3, 3)
+plt.plot(t_, xi_, label='Analytical results',color='lightgreen', linestyle='--')
+plt.plot(t_, model.avg_xi, label='Simulated results', color='darkgreen')
+plt.xlabel('Time (s)')
+plt.ylabel('Scaled time (s)')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 #Strains
-plt.subplot(2, 3, 4)
-plt.plot(t_, dedt, label='Analytical results', color='r')
-plt.plot(t_, model.avg_t_epsilon, label='Simulated results', color='b')
-plt.title('Plot of total strains vs Time')
-plt.xlabel('Time (t)')
-plt.ylabel('Total strain')
+#plt.subplot(2, 3, 4)
+plt.plot(t_, dedt, label='Analytical results',color='lightgreen', linestyle='--')
+plt.plot(t_, model.avg_t_epsilon, label='Simulated results', color='darkgreen')
+plt.xlabel('Time (s)')
+plt.ylabel('Total strain (-)')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 #Stresses
-plt.subplot(2, 3, 5)
-plt.plot(t_, sigma_analytical_, label='Analytical results', color='r')
-plt.plot(t_, model.avg_t_sigma_mid, label='Simulated results', color='b')
-plt.title('Plot of stresses vs Time')
-plt.xlabel('Time (t)')
+#plt.subplot(2, 3, 5)
+#plt.plot(t_, sigma_analytical_, label='Analytical results', color='r')
+plt.plot(t_, model.avg_t_sigma, label='Simulated results', color='b')
+plt.xlabel('Time (s)')
 plt.ylabel('Stress (MPa)')
 plt.legend()
 plt.grid(True)
+plt.show()
 
-#Thermal Strains
+#Stresses over time
+#plt.subplot(2, 3, 6)
+plt.plot(t_, model.avg_t_sigma_surface, label='Stresses at surface ', color='b')
+plt.plot(t_, model.avg_t_sigma_mid, label='Stresses at mid_plane', color='r')
+plt.xscale('log')  # Set x-axis to logarithmic scale
+plt.xlabel('Time (s)')
+plt.ylabel('Stress (MPa)')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+'''#Thermal Strains
 plt.subplot(2, 3, 6)
 #plt.plot(t_, epsilon_, label='Analytical results', color='r')
 plt.plot(t_, model.avg_thermal_epsilon, label='Simulated results', color='b')
 plt.title('Plot of thermal strains vs Time')
-plt.xlabel('Time (t)')
+plt.xlabel('Time (s)')
 plt.ylabel('Thermal strain')
 plt.legend()
-plt.grid(True)
+plt.grid(True)'''
 
-# Adjust layout
-plt.tight_layout()
-plt.show()
-plt.savefig('figure.png')'''
+
+
+
+
 
