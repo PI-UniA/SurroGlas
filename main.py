@@ -222,15 +222,6 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-'''#Thermal Strains
-plt.subplot(2, 3, 6)
-#plt.plot(t_, epsilon_, label='Analytical results', color='r')
-plt.plot(t_, model.avg_thermal_epsilon, label='Simulated results', color='b')
-plt.title('Plot of thermal strains vs Time')
-plt.xlabel('Time (s)')
-plt.ylabel('Thermal strain')
-plt.legend()
-plt.grid(True)'''
 
 
 
