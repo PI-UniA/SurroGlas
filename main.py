@@ -6,6 +6,9 @@ from AnalyticalSoln import AnalyticalSoln
 from OutgoingDto import OutgoingDto
 import logging
 import numpy as np
+import os
+import psutil
+
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -38,9 +41,8 @@ jit_options = {
 
 # Time domain (whole time domain or for each zone)
 t_start = 0.0
-t_end = 50.0
+t_end = 20
 time = (t_start, t_end)
-
 dt = 0.1
 t = t_start
 
@@ -80,7 +82,7 @@ try:
         "T_ambient": 293.15,
         # Initial temperature
         "T_0": 923.15,
-        "alpha": 40.0,    #ideal 2
+        "alpha": 15.0,    #ideal for 1d 2, for 2d 0.2
         # Convective heat transfer coefficient (Controlling cooling rate)
         "htc": 280.1,
         # Material density
@@ -100,6 +102,8 @@ try:
         "mu": 1.0,
         "Young's_modulus": 70.0e6, # from GP into MPa
         "Possion_ratio": 0.22,
+        "beta": 0.5,
+        "gamma": 0.5,
     }
 
     analytical_constants = {
@@ -130,7 +134,7 @@ except Exception as e:
     result = OutgoingDto().to_json()
 
 
-'''t_ = np.linspace(start=0.0, stop=50, num=500)
+t_ = np.linspace(start=0.0, stop=20, num=200)
 
 #Variables of analytical equations in arrays over time loop
 
@@ -144,70 +148,87 @@ sigma_ = [AnalyticalSoln.stress(t_i, constants=analytical_constants) for t_i in 
 sigma_analytical_ = [AnalyticalSoln.sigma_analytical(t_i, constants=analytical_constants) for t_i in t_]
 
 
-fig, axs = plt.subplots(2, 3)
-
+#fig, axs = plt.subplots(2, 3)
+plt.rcParams['font.family'] = "Times New Roman"
+plt.rcParams['font.size'] = 15
 # Temperatures
-plt.subplot(2, 3, 1)
+#plt.subplot(2, 3, 1)
 plt.plot(t_, T_, label='Analytical results', color='r')
 plt.plot(t_, model.avg_T, label='Simulated results', color='b')
-plt.title('Plot of Temperature vs Time')
-plt.xlabel('Time (t)')
+plt.xlabel('Time (s)')
 plt.ylabel('Tempertures (K)')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 # Shift functions
-plt.subplot(2, 3, 2)
-plt.plot(t_, phi_, label='Analytical results', color='r')
+#plt.subplot(2, 3, 2)
+'''plt.plot(t_, phi_, label='Analytical results', color='r')
 plt.plot(t_, model.avg_phi, label='Simulated results', color='b')
-plt.title('Plot of shift function vs Time')
-plt.xlabel('Time (t)')
+plt.xlabel('Time (s)')
 plt.ylabel('Shift function')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 #Scaled times
-plt.subplot(2, 3, 3)
+#plt.subplot(2, 3, 3)
 plt.plot(t_, xi_, label='Analytical results', color='r')
 plt.plot(t_, model.avg_xi, label='Simulated results', color='b')
-plt.title('Plot of scaled times vs Time')
-plt.xlabel('Time (t)')
-plt.ylabel('Scaled time')
+plt.xlabel('Time (s)')
+plt.ylabel('Scaled time (s)')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 #Strains
-plt.subplot(2, 3, 4)
+#plt.subplot(2, 3, 4)
 plt.plot(t_, dedt, label='Analytical results', color='r')
 plt.plot(t_, model.avg_t_epsilon, label='Simulated results', color='b')
-plt.title('Plot of total strains vs Time')
-plt.xlabel('Time (t)')
-plt.ylabel('Total strain')
+plt.xlabel('Time (s)')
+plt.ylabel('Total strain (-)')
 plt.legend()
 plt.grid(True)
+plt.show()
 
 #Stresses
-plt.subplot(2, 3, 5)
-plt.plot(t_, sigma_analytical_, label='Analytical results', color='r')
-plt.plot(t_, model.avg_t_sigma_mid, label='Simulated results', color='b')
-plt.title('Plot of stresses vs Time')
-plt.xlabel('Time (t)')
+#plt.subplot(2, 3, 5)
+plt.plot(t_, sigma_analytical_, label='Analytical results', color='lightgreen', linestyle='--')
+plt.plot(t_, model.avg_t_sigma, label='Simulated results', color='darkgreen')
+plt.xlabel('Time (s)')
 plt.ylabel('Stress (MPa)')
 plt.legend()
 plt.grid(True)
+plt.show()'''
 
-#Thermal Strains
-plt.subplot(2, 3, 6)
-#plt.plot(t_, epsilon_, label='Analytical results', color='r')
-plt.plot(t_, model.avg_thermal_epsilon, label='Simulated results', color='b')
-plt.title('Plot of thermal strains vs Time')
-plt.xlabel('Time (t)')
-plt.ylabel('Thermal strain')
+#Stresses over time
+#plt.subplot(2, 3, 6)
+plt.plot(t_, model.avg_t_sigma_surface, label='Stresses at surface ', color='b')
+plt.plot(t_, model.avg_t_sigma_mid, label='Stresses at mid_plane', color='r')
+#plt.xscale('log')  # Set x-axis to logarithmic scale
+plt.xlabel('Time (s)')
+plt.ylabel('Stress (MPa)')
 plt.legend()
 plt.grid(True)
-
-# Adjust layout
-plt.tight_layout()
 plt.show()
-plt.savefig('figure.png')'''
 
+# Number of available cores
+print(f"Number of CPU cores: {os.cpu_count()}")
+
+
+# Get the current process
+process = psutil.Process()
+
+# CPU utilization percentage per core
+print(f"CPU usage per core: {psutil.cpu_percent(percpu=True)}")
+
+# Current process's CPU utilization
+print(f"Current process CPU usage: {process.cpu_percent(interval=1.0)}")
+
+# idea how to import scaled times into stress equations
+# understand what is ([x[0])
+# how the position is time-dependent x(t)
+
+
+# today scaled done and phi done
+# epsilon - previous
