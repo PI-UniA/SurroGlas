@@ -33,10 +33,10 @@ a_with_mesh = jnp.concatenate((a, mesh_shape_corrected), axis=1)
 train_x, test_x = a_with_mesh[:80], a_with_mesh[80:100]
 train_y, test_y = u[:80], u[80:100]
 
-#print(train_x.shape)
-#print(train_y.shape)
-#print(test_x.shape)
-#print(test_y.shape)
+print(train_x.shape)
+print(train_y.shape)
+print(test_x.shape)
+print(test_y.shape)
 
 
 # -- SpectralConv1d, FNOBlock1d, FNO1d definitions here --

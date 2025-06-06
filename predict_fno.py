@@ -133,12 +133,12 @@ print("Mean relative L2 error:", jnp.mean(rel_l2_set))
 #inputs of test model at t=0
 plt.plot(test_x[0, 0], label="Initial condition")
 
-plt.plot(test_y[0, 0], label="True at t=-")
+plt.plot(test_y[0, 0], label="True at t=20 seconds")
 
-plt.plot(test_prediction[0, 0], label="FNO prediction at t=-")
+plt.plot(test_prediction[0, 0], label="FNO prediction at t=20 seconds")
 plt.legend()
 plt.grid()
 plt.show()
 
 rmse = np.sqrt(np.mean((test_y - test_prediction) ** 2))
-print(f"RMSE between FEM and FNO mean temperatures: {rmse:.3f} K")
+print(f"RMSE between FEM and FNO mean temperatures: {rmse:.2f} K")

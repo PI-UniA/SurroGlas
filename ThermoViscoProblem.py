@@ -1018,15 +1018,15 @@ class ThermoViscoProblem:
         self.avg_t_sigma_mid= []
         self.avg_t_sigma_surface= []
         self.temperature_time_array = []
+        self.all_temperatures = []
+        self.all_stresses = []
         save_times = [0.1, 10, 20, 50]
         self.stress_data = {time: None for time in save_times}
         if self.mesh.comm.rank == 0:
             # print("Starting solve")
             logger.debug("Starting solve")
             t_start = time()
-        all_temperatures = []
-        all_stresses = []
-    
+
         for _ in range(self.n_steps):
             self.t += self.dt
             self.solve_timestep(t=self.t)
@@ -1043,14 +1043,14 @@ class ThermoViscoProblem:
             current_stress = self.functions_next["sigma"].x.array[:]
             
             # Extend the list with the flattened temperature values
-            all_temperatures.extend(current_temperature.flatten().tolist())
-            all_stresses.extend(current_stress.flatten().tolist())
+            self.all_temperatures.extend(current_temperature.flatten().tolist())
+            self.all_stresses.extend(current_stress.flatten().tolist())
 
             print(f"Time {self.t}: {current_temperature}")
 
         # Convert the list to a NumPy array and reshape to a single column
-        all_temperatures_array = np.array(all_temperatures).reshape(-1, 1)
-        all_stresses_array = np.array(all_stresses).reshape(-1, 1)
+        all_temperatures_array = np.array(self.all_temperatures).reshape(-1, 1)
+        all_stresses_array = np.array(self.all_stresses).reshape(-1, 1)
 
         # Split the temperature array into two halves
         mid_index_temperature = len(all_temperatures_array) // 2
@@ -1062,14 +1062,16 @@ class ThermoViscoProblem:
         first_half_stress = all_stresses_array[:mid_index_stress]
         second_half_stress = all_stresses_array[mid_index_stress:]
 
+        np.savetxt("temperature_over_time_1_array.txt", all_temperatures_array, delimiter="\t", fmt="%.6f")
         # Save first half of the temperatures
         np.savetxt("temperature_over_time_0_50.txt", first_half_temp, delimiter="\t", fmt="%.6f")
         # Save second half of the temperatures
         np.savetxt("temperature_over_time_51_100.txt", second_half_temp, delimiter="\t", fmt="%.6f")
         
-        # Save first half of the temperatures
+        np.savetxt("stress_over_time_1_array.txt", all_stresses_array, delimiter="\t", fmt="%.6f")
+        # Save first half of the stresses
         np.savetxt("stress_over_time_0_50.txt", first_half_stress, delimiter="\t", fmt="%.6f")
-        # Save second half of the temperatures
+        # Save second half of the stresses
         np.savetxt("stress_over_time_51_100.txt", second_half_stress, delimiter="\t", fmt="%.6f")
 
 
