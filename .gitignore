@@ -174,5 +174,5 @@ cython_debug/
 **/*.xdmf
 *.bp
 **/*.bp
-results/*
-#output/*
+results/
+output/
