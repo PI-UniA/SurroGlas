@@ -116,10 +116,10 @@ for i, row in param_df.iterrows():
         dto = model.solve()
         np.savetxt(f"{results_dir}/temperature_all_case{i}.txt", model.all_temperatures, fmt="%.6f")
         np.savetxt(f"{results_dir}/stress_all_case{i}.txt", model.all_stresses, fmt="%.6f")
-        #np.savetxt(f"{results_dir}/temperature_0_50_case_{i}.txt", model.avg_T[:10], fmt="%.6f")
-        #np.savetxt(f"{results_dir}/temperature_51_100_case_{i}.txt", model.avg_T[10:], fmt="%.6f")
-        np.savetxt(f"{results_dir}/params_case_{i}.txt", row.values, header="htc,epsilon,T_ambient,T_0")
+        np.savetxt(f"{results_dir}/params_case_{i}.txt", row.values[np.newaxis, :], delimiter=",", header="htc,epsilon,T_ambient,T_0", comments="")
 
     except Exception as e:
         logger.error(f"Simulation {i} failed: {e}")
 
+
+# now train with FNO and DeepOnet with different dataset
