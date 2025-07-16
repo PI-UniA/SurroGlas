@@ -986,12 +986,12 @@ class ThermoViscoProblem:
         self.functions["elastic_stress"].interpolate(
             self.material_model.expressions["elastic_stress"]
         )
-        self.functions["v"].interpolate(
-            self.material_model.expressions["v"]
-        )
-        self.functions["a"].interpolate(
-            self.material_model.expressions["a"]
-        )
+        #self.functions["v"].interpolate(
+        #    self.material_model.expressions["v"]
+        #)
+        #self.functions["a"].interpolate(
+        #    self.material_model.expressions["a"]
+        #)
         
         self._update_values(current=self.functions_next["sigma"],previous=self.functions_current["sigma"])
         self._update_values(current=self.functions["xi"], previous=self.functions_previous["xi"])
@@ -1062,17 +1062,17 @@ class ThermoViscoProblem:
         first_half_stress = all_stresses_array[:mid_index_stress]
         second_half_stress = all_stresses_array[mid_index_stress:]
 
-        np.savetxt("temperature_over_time_1_array.txt", all_temperatures_array, delimiter="\t", fmt="%.6f")
+        np.savetxt("results/temperature_over_time_1_array.txt", all_temperatures_array, delimiter="\t", fmt="%.6f")
         # Save first half of the temperatures
-        np.savetxt("temperature_over_time_0_50.txt", first_half_temp, delimiter="\t", fmt="%.6f")
+        np.savetxt("results/temperature_over_time_1st_half.txt", first_half_temp, delimiter="\t", fmt="%.6f")
         # Save second half of the temperatures
-        np.savetxt("temperature_over_time_51_100.txt", second_half_temp, delimiter="\t", fmt="%.6f")
+        np.savetxt("results/temperature_over_time_2nd_half.txt", second_half_temp, delimiter="\t", fmt="%.6f")
         
-        np.savetxt("stress_over_time_1_array.txt", all_stresses_array, delimiter="\t", fmt="%.6f")
+        np.savetxt("results/stress_over_time_1_array.txt", all_stresses_array, delimiter="\t", fmt="%.6f")
         # Save first half of the stresses
-        np.savetxt("stress_over_time_0_50.txt", first_half_stress, delimiter="\t", fmt="%.6f")
+        np.savetxt("results/stress_over_time_1st_half.txt", first_half_stress, delimiter="\t", fmt="%.6f")
         # Save second half of the stresses
-        np.savetxt("stress_over_time_51_100.txt", second_half_stress, delimiter="\t", fmt="%.6f")
+        np.savetxt("results/stress_over_time_2nd_half.txt", second_half_stress, delimiter="\t", fmt="%.6f")
 
 
         if self.mesh.comm.rank == 0:

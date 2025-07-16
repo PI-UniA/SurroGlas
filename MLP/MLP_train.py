@@ -1,17 +1,15 @@
+#MLP_train.py 
 import numpy as np
-import os
-import pandas as pd
 import os
 import jax
 import jax.numpy as jnp
 import equinox as eqx
 import optax
-import numpy as np
 import matplotlib.pyplot as plt
 import time
-import pickle
+from sklearn.preprocessing import StandardScaler
 
-# Reload everything due to session reset
+# === Load parameter and temperature files ===
 results_dir = "results"
 param_files = sorted([f for f in os.listdir(results_dir) if f.startswith("params_case_")])
 temp_files = sorted([f for f in os.listdir(results_dir) if f.startswith("temperature_all_case")])
@@ -29,51 +27,29 @@ for param_file, temp_file in zip(param_files, temp_files):
     X_params.append(params)
     Y_temperatures.append(temps)
 
-X_params = np.stack(X_params)  # shape: (16, 4)
-Y_temperatures = np.stack(Y_temperatures)  # shape: (16, 9800)
+X_params = np.stack(X_params).astype(np.float32)  # (16, 4)
+Y_temperatures = np.stack(Y_temperatures).astype(np.float32).reshape(16, 200, 49)  # (16, 200, 49)
 
-# Reshape Y to (16, 200, 49) --> time, space
-#
-Y_temperatures = Y_temperatures.reshape(16, 200, 49)
+# === Normalize ===
+x_scaler = StandardScaler()
+X_scaled = x_scaler.fit_transform(X_params)
 
-# Generate time and space grids
-time_grid = np.linspace(0, 1, 200)  # normalized time
-space_grid = np.linspace(0, 1, 49)  # normalized space
+Y_flat = Y_temperatures.reshape(16, -1)
+y_scaler = StandardScaler()
+Y_scaled = y_scaler.fit_transform(Y_flat).reshape(16, 200, 49)
 
-# Create mesh grids and expand dimensions to match data
-T, X = np.meshgrid(time_grid, space_grid, indexing='ij')  # shape: (200, 49)
+np.save("MLP/X_train_mlp.npy", X_scaled)
+np.save("MLP/Y_train_mlp.npy", Y_scaled)
 
-# Expand to shape: (16, 1, 200, 49)
-T_grid = np.tile(T[None, None, :, :], (16, 1, 1, 1))
-X_grid = np.tile(X[None, None, :, :], (16, 1, 1, 1))
+np.save("MLP/x_scaler_mean_mlp.npy", x_scaler.mean_)
+np.save("MLP/x_scaler_scale_mlp.npy", x_scaler.scale_)
+np.save("MLP/y_scaler_mean_mlp.npy", y_scaler.mean_)
+np.save("MLP/y_scaler_scale_mlp.npy", y_scaler.scale_)
 
-# Repeat parameters across the spatial-temporal grid
-P_grids = []
-for i in range(4):
-    p = X_params[:, i][:, None, None, None]
-    p_grid = np.tile(p, (1, 1, 200, 49))
-    P_grids.append(p_grid)
+# === Flatten target ===
+Y_train_flat = Y_scaled.reshape(16, -1)
 
-import jax
-import jax.numpy as jnp
-import equinox as eqx
-import optax
-import matplotlib.pyplot as plt
-
-# Dummy data placeholders (replace with your actual data)
-# X_train: (16, 4), Y_train: (16, 200, 49)
-X_train = jnp.array(X_params)               # Shape: (16, 4)
-Y_train = jnp.array(Y_temperatures)         # Shape: (16, 200, 49)
-
-# Save training data
-np.save("X_train.npy", X_train)
-np.save("Y_train.npy", Y_train)
-
-# Flatten Y_train targets to match MLP output
-Y_train_flat = Y_train.reshape(Y_train.shape[0], -1)  # Shape: (16, 9800)
-
-
-# Define MLP model
+# === Define MLP ===
 class MLP(eqx.Module):
     layers: list
 
@@ -90,23 +66,19 @@ class MLP(eqx.Module):
             for layer in self.layers[:-1]:
                 xi = jax.nn.relu(layer(xi))
             return self.layers[-1](xi)
-        return jax.vmap(forward)(x)  # x: (batch, 4)
+        return jax.vmap(forward)(x)
 
-# Hyperparameters
 in_dim = 4
 out_dim = 200 * 49
 width = 512
 depth = 4
 key = jax.random.PRNGKey(0)
 
-# Instantiate model
 model = MLP(in_dim, out_dim, width, depth, key=key)
 
-# Define optimizer and loss
 optimizer = optax.adam(1e-3)
 opt_state = optimizer.init(model)
 
-# Loss function
 def loss_fn(model, x, y):
     pred = model(x)
     return jnp.mean((pred - y) ** 2)
@@ -122,16 +94,16 @@ def make_step(model, opt_state, x, y):
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss
 
-# Training loop
+X_train = jnp.array(X_scaled)
+Y_train = jnp.array(Y_train_flat)
+
 n_epochs = 10000
 start_time = time.time()
 for epoch in range(n_epochs):
-    model, opt_state, loss = make_step(model, opt_state, X_train, Y_train_flat)
+    model, opt_state, loss = make_step(model, opt_state, X_train, Y_train)
     if epoch % 100 == 0:
         print(f"Epoch {epoch}: Loss = {loss:.6f}")
 end_time = time.time()
 print(f"⏱️ Training time: {end_time - start_time:.2f} seconds")
 
-# Save model
-with open("mlp_model.pkl", "wb") as f:
-    pickle.dump(model, f)
+eqx.tree_serialise_leaves("MLP/mlp_model.eqx", model)

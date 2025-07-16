@@ -1,7 +1,7 @@
+# MLP_predict.py
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -23,66 +23,74 @@ class MLP(eqx.Module):
             for layer in self.layers[:-1]:
                 xi = jax.nn.relu(layer(xi))
             return self.layers[-1](xi)
-        return jax.vmap(forward)(x)  # x: (batch, 4)
+        return jax.vmap(forward)(x)
 
-# ------------------ Load Model ------------------
-with open("mlp_model.pkl", "rb") as f:
-    model = pickle.load(f)
+# Load scalers
+x_mean = np.load("MLP/x_scaler_mean_mlp.npy")
+x_std = np.load("MLP/x_scaler_scale_mlp.npy")
+y_mean = np.load("MLP/y_scaler_mean_mlp.npy")
+y_std = np.load("MLP/y_scaler_scale_mlp.npy")
 
-# === Load data ===
-X_train = np.load("X_train.npy")            # shape: (16, 4)
-Y_train = np.load("Y_train.npy")      # shape: (16, 200, 49)
+# Load model
+in_dim = 4
+out_dim = 200 * 49
+width = 512
+depth = 4
+mlp_template = MLP(in_dim, out_dim, width, depth, key=jax.random.PRNGKey(0))
+model = eqx.tree_deserialise_leaves("MLP/mlp_model.eqx", like=mlp_template)
 
-# === Predict on training data ===
-y_pred_flat = model(X_train)      # shape: (16, 9800)
-y_pred = y_pred_flat.reshape(16, 200, 49)
+# Load and scale training data
+X_train_raw = np.load("MLP/X_train_mlp.npy")
+Y_train_scaled = np.load("MLP/Y_train_mlp.npy")
 
-# ------------------ Inference Time: Train Set ------------------
-start_time = time.time()
-y_pred_flat = model(X_train)             # shape (16, 9800)
-inference_time = time.time() - start_time
+X_train_tensor = jnp.array(X_train_raw)
+y_pred_flat = model(X_train_tensor)
+y_pred_scaled = y_pred_flat.reshape(16, 200, 49)
 
-y_pred = y_pred_flat.reshape(16, 200, 49)
+# Inverse transform
+Y_pred = np.array(y_pred_scaled).reshape(16, -1) * y_std + y_mean
+Y_pred = Y_pred.reshape(16, 200, 49)
+Y_true = Y_train_scaled.reshape(16, -1) * y_std + y_mean
+Y_true = Y_true.reshape(16, 200, 49)
 
-# === Plot prediction vs ground truth for case 0 and t = 170 ===
-#plt.figure(figsize=(12, 8))
-plt.plot(Y_train[0, 170, :], label='Y_temperatures (true/FEM)')
-plt.plot(y_pred[0, 170, :], label='y_pred (MLP)')
-plt.title("True vs Predicted Temperature Profiles over Space (case 0, t=17 seconds)")
+# Plot comparison
+plt.plot(Y_true[0, 190, :], label='True (FEM)')
+plt.plot(Y_pred[0, 190, :], label='Predicted (MLP)')
+plt.title("Temperature Profile Comparison at t=190")
+plt.xlabel("Space Index")
+plt.ylabel("Temperature (K)")
+plt.legend()
+plt.grid()
+plt.show()
+
+# New input
+new_input = np.array([[100, 0.85, 273.1, 923.15]], dtype=np.float32)
+new_input_scaled = (new_input - x_mean) / x_std
+new_input_tensor = jnp.array(new_input_scaled)
+
+start = time.time()
+new_pred_flat = model(new_input_tensor)
+inference_time = time.time() - start
+
+new_pred_scaled = new_pred_flat.reshape(1, 200, 49)
+new_pred = np.array(new_pred_scaled).reshape(1, -1) * y_std + y_mean
+new_pred = new_pred.reshape(1, 200, 49)
+
+plt.plot(Y_true[1, 190, :], label='True Temperature Case 6')
+plt.plot(new_pred[0, 190, :], label='Predicted Temperature for new input')
+plt.title("New Input Prediction at t=190")
 plt.xlabel("Spatial Index")
 plt.ylabel("Temperature (K)")
 plt.legend()
 plt.grid()
 plt.show()
 
-# ------------------ Predict for New Input ------------------
-new_input = jnp.array([[100, 0.85, 273.1, 923.15]])  # Shape: (1, 4)
-
-start_new = time.time()
-new_pred_flat = model(new_input)
-inference_new = time.time() - start_new
-
-new_pred = new_pred_flat.reshape(1, 200, 49)
-
-# === Compare prediction at t = 170 with known case 6 ===
-#plt.figure(figsize=(12, 6))
-plt.plot(Y_train[6, 170, :], label='Y_temperatures (case 6, t=10)', linestyle='--')
-plt.plot(new_pred[0, 170, :], label='Predicted Temperature')
-plt.title("Predicted Temperature Profile for New Input at t=10")
-plt.xlabel("Spatial Index")
-plt.ylabel("Temperature (K)")
-plt.legend()
-plt.grid()
-plt.show()
-
-# ------------------ Print Inference Times ------------------
-print(f"⏱️  Inference time on all training data (batch of 16): {inference_time:.6f} seconds")
-print(f"⏱️  Inference time for new input: {inference_new:.6f} seconds")
+print(f"⏱️ Inference time (new input): {inference_time:.6f} seconds")
 
 def relative_l2_norm(pred, ref):
-    diff_norm = jnp.linalg.norm(pred - ref)
-    ref_norm = jnp.linalg.norm(ref)
+    diff_norm = np.linalg.norm(pred - ref)
+    ref_norm = np.linalg.norm(ref)
     return diff_norm / ref_norm
 
-rel_l2_set = jax.vmap(relative_l2_norm)(y_pred, Y_train)
-print("Mean relative L2 error:", jnp.mean(rel_l2_set))
+rel_l2_set = [relative_l2_norm(Y_pred[i], Y_true[i]) for i in range(len(Y_pred))]
+print("📈 Mean relative L2 error:", np.mean(rel_l2_set))

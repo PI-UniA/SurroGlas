@@ -101,8 +101,8 @@ class ViscoelasticModel:
         self.stress_zero = Constant(mesh, 0.0)
         self.x = SpatialCoordinate(mesh)
         self.young_modulus = Constant(mesh, model_parameters["Young's_modulus"])
-        self.beta = Constant(mesh, model_parameters["beta"])
-        self.gamma = Constant(mesh, model_parameters["gamma"])
+        #self.beta = Constant(mesh, model_parameters["beta"])
+        #self.gamma = Constant(mesh, model_parameters["gamma"])
         return
     
     def _init_expressions(self,functions: dict, functions_next: dict,
@@ -176,7 +176,7 @@ class ViscoelasticModel:
         )  
         
         #Acceleration
-        self.expressions["a"] = Expression(
+        '''self.expressions["a"] = Expression(
             (functions["U"] - functions_previous["U"] - (dt * functions_previous["v"])) * (2.0 / dt**2),
             functionSpaces["U"].element.interpolation_points()
         ) 
@@ -189,7 +189,7 @@ class ViscoelasticModel:
         #self.expressions["u"] = Expression(
         #    (dt * functions_previous["v"]) * (dt**2/2.0)*((1-self.beta)*functions_previous["a"]+ self.beta*functions["a"]),
         #    functionSpaces["U"].element.interpolation_points()
-        #)  
+        #)  '''
      
         #elastic strain (assuming linear elasticity)
         self.expressions["elastic_strain"] = Expression(
