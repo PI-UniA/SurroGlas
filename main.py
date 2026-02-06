@@ -42,7 +42,7 @@ jit_options = {
 
 # Time domain (whole time domain or for each zone)
 t_start = 0.0
-t_end = 500
+t_end = 50
 time = (t_start, t_end)
 
 dt = 0.1

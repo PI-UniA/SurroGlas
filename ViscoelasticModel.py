@@ -153,14 +153,14 @@ class ViscoelasticModel:
         # Eq. 5
         self.expressions["phi_current"] = Expression(
             ufl.exp(
-                ((self.H * self.chi)/ self.Rg) * ((1/self.Tb) - (1/functions_current["T"]))
+                ((self.H )/ self.Rg) * ((1/self.Tb) - (1/functions_current["T"]))
             ),
             functionSpaces["T"].element.interpolation_points()
         )    
          
         self.expressions["phi_next"] = Expression(
             ufl.exp(
-                ((self.H * (1-self.chi))/ self.Rg) * ((1/self.Tb) - (1/functions_current["Tf"]))
+                ((self.H)/ self.Rg) * ((1/self.Tb) - (1/functions_next["T"]))
             ),
             functionSpaces["T"].element.interpolation_points()
         )
@@ -212,18 +212,6 @@ class ViscoelasticModel:
                       + ((self.alpha_liquid - self.alpha_solid) * (functions_current["Tf"] - self.T_init))),
             functionSpaces["T"].element.interpolation_points()
         )
-        # Eq. 28
-        self.expressions["total_strain"] = Expression(
-            self.I*((functions["volumetric_strain"]) - (functions["thermal_strain"]))/10**6,
-            functionSpaces["sigma"].element.interpolation_points()
-        )
-        
-        # Eq. 29 (diagnoals + off-diagonals of the deviatoric strain)
-        self.expressions["deviatoric_strain"] = Expression(
-            ((functions["total_strain"]) - (self.I * (functions["volumetric_strain"]))) 
-            ,
-            functionSpaces["sigma"].element.interpolation_points()
-        )
 
         #volumetric strain (assuming linear elasticity) for 1D exx = [0,0], 2D (exx+eyy)= ([0,0]+[1,1])/2, etc, it is also called sum of direct strains
         if self.dim == 1:
@@ -258,12 +246,6 @@ class ViscoelasticModel:
             functionSpaces["sigma"].element.interpolation_points()
         )'''
 
-        # No eq. specified, extrapolation step
-        # T(i+1) = T(i) + dT = T(i) + (T(i) - T(i-1))
-        self.expressions["T_next"] = Expression(
-            functions_current["T"] + (functions_current["T"] - functions_previous["T"]),
-            functionSpaces["T"].element.interpolation_points()
-        )
         # Eq. 15a + 20
         self.expressions["ds_partial"] = Expression(
             ufl.as_tensor([

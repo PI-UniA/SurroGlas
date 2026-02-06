@@ -451,7 +451,6 @@ class ThermoViscoProblem:
         v = 0.1667  # Lehr speed in m/s
         glass_position = v * t
 
-<<<<<<< HEAD
     # Heat diffusion equation #
     def _setup_weak_form_T(self) -> None:
         # Define the left boundary (x = 0)
@@ -480,7 +479,7 @@ class ThermoViscoProblem:
         # Measure for the left (ds(1)) and right (ds(2)) boundaries
         ds = Measure("exterior_facet",domain=self.mesh)
         dx = Measure("dx",domain=self.mesh)
-=======
+        
         if glass_position <= 20.0:
             return 'A'
         elif glass_position <= 40.0:
@@ -698,7 +697,6 @@ class ThermoViscoProblem:
         self.F = (
             rho*cp_T*((self.functions_current["T"]) - (self.functions_previous["T"])) * self.v * dx
             + self.dt * (
-<<<<<<< HEAD
             # Laplacian
             + (alpha)*inner(grad(self.functions_current["T"]),grad(self.v)) * dx 
             # Right hand side (heat source)
@@ -707,7 +705,6 @@ class ThermoViscoProblem:
             + 1.6e-3*((sigma * epsilon)) * (self.functions_current["T"]**4 - T_ambient**4) * self.v * ds
             # Convection
             + 1.6e-3*(htc) * (self.functions_current["T"] - T_ambient) * self.v * ds
-=======
                 + ((k_T))*inner(grad(self.functions_current["T"]), grad(self.v)) * dx
                 - (f) * self.v * dx
                 #- self.functions["cooling_rate"] * self.functions_current["T"] * self.v * dx  
