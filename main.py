@@ -69,7 +69,7 @@ try:
 
     fe_config = {
         "T":        {"element": "CG", "degree": 1},
-        "U":        {"element": "CG", "degree": 1},
+        "U":        {"element": "CG", "degree": 2},
         "sigma":    {"element": "CG", "degree": 1},
         
     }
