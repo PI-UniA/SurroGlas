@@ -42,7 +42,7 @@ jit_options = {
 
 # Time domain (whole time domain or for each zone)
 t_start = 0.0
-t_end = 10
+t_end = 500
 time = (t_start, t_end)
 
 dt = 0.1
@@ -85,11 +85,7 @@ try:
         "T_ambient": 293.15,
         # Initial temperature
         "T_0": 923.15,
-<<<<<<< HEAD
         "alpha": 15.0,    #ideal for 1d 2, for 2d 0.2
-=======
-        "alpha": 20.0,    #ideal for 1d 2, for 2d 0.2
->>>>>>> 0b89925 (Final stresses update1D)
         # Convective heat transfer coefficient (Controlling cooling rate)
         "htc": 280.1,
         # Material density
@@ -139,7 +135,7 @@ except Exception as e:
     result = OutgoingDto().to_json()
 
 
-t_ = np.linspace(start=0.0, stop=10, num=100)
+t_ = np.linspace(start=0.0, stop=500, num=5000)
 #t_ = np.logspace(-2, 4, num=100)
 #Variables of analytical equations in arrays over time loop
 

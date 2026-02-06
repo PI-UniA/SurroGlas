@@ -656,8 +656,6 @@ class ThermoViscoProblem:
         # --- measures ---
         ds = Measure("ds", domain=self.mesh, subdomain_data=facet_tags)
         dx = Measure("dx", domain=self.mesh)
->>>>>>> 0b89925 (Final stresses update1D)
-
         element_type = self.finiteElements["T"]
 
         alpha = self.physical_model.alpha
@@ -752,7 +750,6 @@ class ThermoViscoProblem:
 
                 + (sigma*epsilon)*(T**4 - T_ambient**4)*self.v*ds(1)
                 + (sigma*epsilon)*(T**4 - T_ambient**4)*self.v*ds(2)
->>>>>>> 0b89925 (Final stresses update1D)
             )
         )
 
@@ -981,10 +978,7 @@ class ThermoViscoProblem:
         self._solve_T()
         self._solve_u()
         self._solve_Tf()
-<<<<<<< HEAD
         self._solve_strains()
-=======
->>>>>>> 0b89925 (Final stresses update1D)
         self._solve_shifted_time()
         self._solve_strains()
         self._solve_stress()
@@ -1321,15 +1315,10 @@ class ThermoViscoProblem:
             self.material_model.expressions["s_partial_next"]
         )
         self._update_values(current=self.functions["ds_partial"],previous=self.functions_previous["ds_partial"])
-
-<<<<<<< HEAD
         #self._update_values(current=self.functions_next["s_tilde_partial"],previous=self.functions_current["s_tilde_partial"])
         #self._update_values(current=self.functions_next["s_partial"],previous=self.functions_current["s_partial"]) 
-=======
         self._update_values(current=self.functions_next["s_tilde_partial"],previous=self.functions_current["s_tilde_partial"])
         self._update_values(current=self.functions_next["s_partial"],previous=self.functions_current["s_partial"]) 
->>>>>>> 0b89925 (Final stresses update1D)
-
         return
     
     
@@ -1367,16 +1356,13 @@ class ThermoViscoProblem:
         )
         '''self.functions["elastic_stress"].interpolate(
             self.material_model.expressions["elastic_stress"]
-<<<<<<< HEAD
         )
         #self._update_values(current=self.functions_next["sigma"],previous=self.functions_current["sigma"])
         self._update_values(current=self.functions["xi"], previous=self.functions_previous["xi"])
-=======
         )'''
         self._update_values(current=self.functions_next["sigma"],previous=self.functions_current["sigma"])
         self._update_values(current=self.functions["xi"], previous=self.functions_previous["xi"])
         self._update_values(current=self.functions["thermal_strain"], previous=self.functions_previous["thermal_strain"])
->>>>>>> 0b89925 (Final stresses update1D)
         self._update_values(current=self.functions["U"], previous=self.functions_previous["U"])
 
         return
