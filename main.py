@@ -81,13 +81,15 @@ try:
         "epsilon": 0.87,
         # Boltzmann constant
         "sigma": 5.670e-8,
+        # velocity
+        "velocity": 0.24,
         # Ambient temperature
-        "T_ambient": 293.15,
+        #"T_ambient": 293.15,
         # Initial temperature
-        "T_0": 923.15,
+        "T_0": 873.0,
         "alpha": 15.0,    #ideal for 1d 2, for 2d 0.2
         # Convective heat transfer coefficient (Controlling cooling rate)
-        "htc": 280.1,
+        "htc": 280.0,
         # Material density
         "rho": 2500.0,
         # Specific heat capacity
@@ -98,9 +100,9 @@ try:
         "H": 627.8e3,
         "Tb": 869.0,
         "Rg": 8.314,
-        "alpha_solid": 9.10e-6,
-        "alpha_liquid": 25.10e-6,
-        "Tf_init": 923.15,
+        "alpha_solid": 9.0e-6,
+        "alpha_liquid": 32.50e-6,
+        "Tf_init": 873.0,
         "lambda_": 1.25,
         "mu": 1.0,
         "Young's_modulus": 70.0e6, # from GP into MPa
@@ -155,9 +157,10 @@ plt.rcParams['font.family'] = "Times New Roman"
 plt.rcParams['font.size'] = 15
 
 # Temperatures
-#plt.subplot(2, 3, 1)
-plt.plot(t_, T_, label='Analytical results', color='g')
-#plt.plot(t_, model.T_0_edge, label='Simulated results at 1st node', color='b')
+
+#plt.plot(t_, T_, label='Analytical results', color='g')
+#
+plt.plot(t_, model.T_0_edge, label='Simulated results at 1st node', color='b')
 #plt.plot(t_, model.T_0_middle, label='Simulated results at middle node', color='g')
 plt.plot(t_, model.avg_T, label='Simulated results average nodes', color='r')
 plt.xlabel('Time (s)')
@@ -166,40 +169,55 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
+# Surface stress: solid red
+plt.plot(t_, model.avg_t_sigma_surface, label='Stresses at surface', color='red', linestyle='-')
+plt.plot(t_, model.avg_t_sigma_mid, label='Stresses at center', color='black', linestyle='--')
+plt.xlabel('Time (s)')
+plt.ylabel('Stress (MPa)')
+plt.legend()
+plt.grid(True)
+plt.xlim(0, t_[-1]) 
+plt.show()
+
+print("len(t_) =", len(t_))
+print("len(surface stress) =", len(model.avg_t_sigma_surface))
+print("len(mid stress) =", len(model.avg_t_sigma_mid))
+print("t_ max =", t_[-1]) 
+
+   
+v_m_per_s = 9.85 / 60.0            # m/s
+x_ = v_m_per_s * np.asarray(t_)     # meters
+L = 100.0  # m (example total length)
+mask = x_ <= L
+# Plot 2: Surface temperature vs length (NEW)
+plt.plot(x_[mask], (model.T_0_edge), label='Surface temperature', color='b')
+plt.xlabel('Lehr distance x (m)')
+plt.ylabel('Surface temperature (K)')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+plt.plot(x_[mask], (model.avg_t_sigma_surface), label='Surface temperature', color='r')
+plt.plot(x_[mask], (model.avg_t_sigma_mid), label='Surface temperature', color='b')
+plt.xlabel('Lehr distance x (m)')
+plt.ylabel('Surface temperature (K)')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+'''
+#plt.subplot(2, 3, 1)
 #Stresses over time
 #plt.subplot(2, 3, 6)
 #plt.figure(figsize=(6, 4), dpi=600)  # high resolution figure
 
-# Surface stress: solid red
-plt.plot(
-    t_,
-    model.avg_t_sigma_surface,
-    label='Stresses at surface',
-    color='red',
-    linestyle='-',
-)
-
-# Mid-plane stress: dashed black
-plt.plot(
-    t_,
-    model.avg_t_sigma_mid,
-    label='Stresses at center',
-    color='black',
-    linestyle='--',
-)
-
-plt.xscale('log')                 # logarithmic time axis
+#plt.xscale('log')                 # logarithmic time axis
 #plt.ylim(-20, 10)                 # y-axis limits in MPa
-plt.xlabel('Time (s)')
-plt.ylabel('Stress (MPa)')
-plt.legend()
-plt.grid(True, which='both', linestyle=':', linewidth=0.5)
-#plt.tight_layout()
-plt.show()
 
 # Shift functions
 #plt.subplot(2, 3, 2)
-'''plt.plot(t_, phi_, label='Analytical results', color='r')
+plt.plot(t_, phi_, label='Analytical results', color='r')
 plt.plot(t_, model.avg_phi, label='Simulated results', color='b')
 >>>>>>> origin/thussein_stress_calculation
 plt.xlabel('Time (s)')
@@ -302,7 +320,7 @@ plt.title('Glass Temperature Profile along Lehr (Zones A, B1, B2)')
 plt.legend(loc='best')
 plt.grid(True)
 plt.show()
-'''
+
 
 # step by step cooling and change the distance domain, where zone 1 first, then zone 2 and then zone 3
 # apply the actial values from the 
@@ -322,3 +340,18 @@ plt.show()
 #check the code and the values properly from the article
 #do taylor
 # delete stiffnes matrix
+# 
+# length best spannung crazy
+# check some stress calculation
+# problem in matching htc numbers with different values of t_ambient
+# 
+# thickness and cooling plays important role
+# self._taylor_exponential(functions,functions_previous,
+# continue adapting updates and previous and current
+# adjust cooling process
+# delete the previous in general
+# decrease the temperature from 923 into 
+#make the refernce grenzbach grahs and cooling rate controlling by htc
+#try to change the htc over zones and print "cooling rates" for each end zone to detect
+#put all the variables in main.py all like geometry and others
+# '''

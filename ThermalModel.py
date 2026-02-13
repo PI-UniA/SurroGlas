@@ -21,7 +21,8 @@ class ThermalModel:
             #self.cp = Constant(mesh,ScalarType(model_parameters["cp"]))       # specific heat - J/(kg*K)
             #self.k = Constant(mesh,ScalarType(model_parameters["k"]))         # thermal conductivity - W/(m*K) 
             # Ambient temperature [K]
-            self.T_ambient = Constant(mesh, model_parameters["T_ambient"])
+            #self.T_ambient = Constant(mesh, model_parameters["T_ambient"])
             self.T_0 = Constant(mesh, ScalarType(model_parameters["T_0"]))     # initial temperature [K]
+            self.velocity = Constant(mesh, ScalarType(model_parameters["velocity"]))     # velocity [m/s]
 
             return
