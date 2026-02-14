@@ -595,20 +595,22 @@ class ThermoViscoProblem:
             
             
             
-        def htc_zone(self, t):
+        '''
+            
+    def htc_zone(self, t):
         """
         Returns an HTC value that is applied only to the zones where glass has reached.
         Before the time threshold, the cooling is not applied to later zones.
         """
         #v = 0.1667
-        if t < 90:  # Glass only in Zone A
-            return 10.0  # Target temperature of B1
+        if t < 54.7:  # Glass only in Zone A
+            return 280.0  # Target temperature of B1
 
-        elif t < 200:  # Glass enters Zone B1
-            return 30.0  # Target temperature of B2
+        elif t < 81.7:  # Glass enters Zone B1
+            return 100.0  # Target temperature of B2
         
         elif t < 266:  # Glass only in Zone B2
-            return 100.0  # Target temperature of C
+            return 200.0  # Target temperature of C
 
         elif t < 355:  # Glass enters Zone C
             return 200.0  # Target temperature of D
@@ -636,9 +638,7 @@ class ThermoViscoProblem:
 
         else:  # Glass enters Zone B4
             return 300.0  # Final ambient temperature
-        #return (280.1*v)/t'''
-            
-
+        #return (280.1*v)/t
 
          
     # Define spatial-dependent T_ambient
@@ -728,7 +728,7 @@ class ThermoViscoProblem:
         sigma = self.physical_model.sigma
         epsilon = self.physical_model.epsilon
         #T_ambient = self.physical_model.T_ambient
-        htc = self.physical_model.htc
+        #htc = self.physical_model.htc
         rho = self.physical_model.rho
         T_0 = self.physical_model.T_0
         #cp = self.physical_model.cp
@@ -810,8 +810,10 @@ class ThermoViscoProblem:
                 k_T*inner(grad(T), grad(self.v))*dx
                 - f*self.v*dx
 
-                + htc*(T - self.functions["T_ambient"])*self.v*ds(1)
-                + htc*(T - self.functions["T_ambient"])*self.v*ds(2)
+                #+ htc*(T - self.functions["T_ambient"])*self.v*ds(1)
+                + self.functions["htc"]*(T - self.functions["T_ambient"])*self.v*ds(1)
+                #+ htc*(T - self.functions["T_ambient"])*self.v*ds(2)
+                + self.functions["htc"]*(T - self.functions["T_ambient"])*self.v*ds(2)
 
                 + (sigma*epsilon)*(T**4 - self.functions["T_ambient"]**4)*self.v*ds(1)
                 + (sigma*epsilon)*(T**4 - self.functions["T_ambient"]**4)*self.v*ds(2)
@@ -846,7 +848,7 @@ class ThermoViscoProblem:
                     # Radiation
                     + 3e-3 * (sigma * epsilon) * (self.functions_current["T"]**4 - self.functions["T_ambient"]**4) * self.v * ds
                     # Convection
-                    + 3e-3 * htc * (self.functions_current["T"] - self.functions["T_ambient"]) * self.v * ds
+                    #+ 3e-3 * htc * (self.functions_current["T"] - self.functions["T_ambient"]) * self.v * ds
                 )
             )
 
@@ -1070,9 +1072,9 @@ class ThermoViscoProblem:
         #self.functions["htc"].interpolate(htc_expr)
 
         # Update T_ambient dynamically only in active zones
-        #def htc_expr(x):
-        #    return np.array([self.htc_zone(t) ], dtype=ScalarType)
-        #self.functions["htc"].interpolate(htc_expr)
+        def htc_expr(x):
+            return np.array([self.htc_zone(t) ], dtype=ScalarType)
+        self.functions["htc"].interpolate(htc_expr)
         
         def T_ambient_expr(x):
             return np.array([self.T_ambient_zone(t) ], dtype=ScalarType)

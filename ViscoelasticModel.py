@@ -315,7 +315,7 @@ class ViscoelasticModel:
         
         # Eq. 18 - Summation of total stresses curve c in fig. 2, including residual stress
         self.expressions["sigma_next"] = Expression(
-            np.sum([functions_next["s_partial"][n,:,:] + (self.I*functions_next["sigma_partial"][n]) for n in range(0,self.tableau_size)]),
+            np.sum([functions_next["s_partial"][n,:,:] + (self.I*functions_next["sigma_partial"][n]) for n in range(0,self.tableau_size)])/10**6,
             functionSpaces["sigma"].element.interpolation_points()
         )     
         
@@ -365,7 +365,7 @@ class ViscoelasticModel:
         """
         return  (
             np.sum([1.0/factorial(k)
-            * (- (functions["xi"])/lambda_value)**k for k in range(0,3)])
+            * (- (functions["xi"])/lambda_value)**k for k in range(0,4)])
             )
 
     def elastic_epsilon(self,ua):

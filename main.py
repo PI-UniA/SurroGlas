@@ -42,7 +42,7 @@ jit_options = {
 
 # Time domain (whole time domain or for each zone)
 t_start = 0.0
-t_end = 10
+t_end = 100
 time = (t_start, t_end)
 
 dt = 0.1
@@ -89,7 +89,7 @@ try:
         "T_0": 873.0,
         "alpha": 15.0,    #ideal for 1d 2, for 2d 0.2
         # Convective heat transfer coefficient (Controlling cooling rate)
-        "htc": 280.0,
+        #"htc": 280.0,
         # Material density
         "rho": 2500.0,
         # Specific heat capacity
@@ -138,7 +138,7 @@ except Exception as e:
 
 
 
-t_ = np.linspace(start=0.0, stop=10, num=100)
+t_ = np.linspace(start=0.0, stop=100, num=1000)
 #t_ = np.logspace(-2, 4, num=100)
 #Variables of analytical equations in arrays over time loop
 
@@ -354,4 +354,4 @@ plt.show()
 #make the refernce grenzbach grahs and cooling rate controlling by htc
 #try to change the htc over zones and print "cooling rates" for each end zone to detect
 #put all the variables in main.py all like geometry and others
-# '''
+# try htc '''

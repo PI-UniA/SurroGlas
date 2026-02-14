@@ -17,7 +17,7 @@ def create_mesh(
     name: str,
     t_start: int,
     t_end: int,
-    thickness_mm: float = 6,
+    thickness_mm: float = 15,
     n_thickness_nodes: int = 20,   # nodes across thickness (x)
     length_m: float = 1.0,         # plate length (y) for 2D/3D
     n_length_nodes: int = 51,      # nodes along y

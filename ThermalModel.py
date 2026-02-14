@@ -16,7 +16,7 @@ class ThermalModel:
             self.epsilon = Constant(mesh,ScalarType(model_parameters["epsilon"])) # view factor
             self.sigma = Constant(mesh,ScalarType(model_parameters["sigma"])) # Stefan Boltzmann constant - W/m^2K^4
             self.alpha = Constant(mesh,ScalarType(model_parameters["alpha"])) 
-            self.htc = Constant(mesh,ScalarType(model_parameters["htc"]))     # heat convective coefficent - W/(m^2*K) 
+            #self.htc = Constant(mesh,ScalarType(model_parameters["htc"]))     # heat convective coefficent - W/(m^2*K) 
             self.rho = Constant(mesh, ScalarType(model_parameters["rho"]))    # density kg/m^3
             #self.cp = Constant(mesh,ScalarType(model_parameters["cp"]))       # specific heat - J/(kg*K)
             #self.k = Constant(mesh,ScalarType(model_parameters["k"]))         # thermal conductivity - W/(m*K) 
