@@ -350,8 +350,7 @@ plt.show()
 # continue adapting updates and previous and current
 # adjust cooling process
 # delete the previous in general
-# decrease the temperature from 923 into 
 #make the refernce grenzbach grahs and cooling rate controlling by htc
 #try to change the htc over zones and print "cooling rates" for each end zone to detect
 #put all the variables in main.py all like geometry and others
-# try htc '''
+# reconrd thickness'''

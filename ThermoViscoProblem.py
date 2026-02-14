@@ -333,7 +333,7 @@ class ThermoViscoProblem:
         
         self._set_initial_condition(temp_value=self.material_model.T_init)
         self.create_vtx_files = create_vtx_files
-        self._init_zone_cooling_monitor()
+        self._init_zone_summary()
         
         if dirichlet_bc_mech:
             self._set_dirichlet_bc_mech()
@@ -682,73 +682,73 @@ class ThermoViscoProblem:
 
         else:  # Glass enters Zone B4
             return 67.0  # Final ambient temperature
-        
-    def _init_zone_cooling_monitor(self):
-        # zone end times (adjust to YOUR true zone schedule)
-        self.zone_ends = [
-            ("A",   54.7),
-            ("B1",  81.0),
-            ("B2",  109.0),
-            ("C",   355.0),
-            ("D",   370.0),
-            ("RET1",400.0),
-            ("RET2",444.0),
-            ("RET3",457.0),
-            ("F1",  500.0),
-            ("F2",  533.0),
-            ("F3",  570.0),
-            ("B4",  None),   # last zone has no "end"
+            
+    def _init_zone_summary(self):
+        # Define your zones with (name, t_start, t_end)
+        # >>> CHANGE these to your real times <<<
+        self._zones = [
+            ("A",  0.0,  54.0),
+            ("B1", 54.0, 81.0),
+            ("B2", 81.0, 109.0),
         ]
 
-        # will store (t_start, T_start) for each zone
-        self._zone_start_state = {}
-        # print flags so we print once
-        self._zone_printed = set()
+        # Will store computed results per zone
+        self._zone_results = {name: None for (name, _, _) in self._zones}
+        # Internal: store captured start temperature once
+        self._zone_Tstart = {name: None for (name, _, _) in self._zones}
+        # Internal: mark zone done once
+        self._zone_done = set()
 
-        # define zone start times from the end times
-        # e.g. A starts at t0, B1 starts at end(A), etc.
-        prev_end = self.time[0]
-        for name, endt in self.zone_ends:
-            self._zone_start_state[name] = {"t_start": prev_end, "T_start": None, "end": endt}
-            if endt is not None:
-                prev_end = endt
 
-    def _print_zone_cooling_rate_if_finished(self, t_now: float):
-        """
-        Prints cooling rate for each zone once it finishes.
-        Uses middle temperature by default (you can switch to avg).
-        """
-        # pick a temperature metric:
-        # - mid thickness (you already use index 10 in 1D)
-        # - or average temperature
-        T_now = float(self.functions_current["T"].x.array[len(self.functions_current["T"].x.array)//2])
+    def _zone_temperature_metric(self) -> float:
+        """Choose which temperature to use (mid-plane, surface, average)."""
+        arr = self.functions_current["T"].x.array
+        # mid-plane in 1D:
+        return float(arr[len(arr) // 2])
 
-        for zone, info in self._zone_start_state.items():
-            endt = info["end"]
-            if endt is None:
+
+    def _update_zone_summary_each_step(self, t_now: float):
+        """Call every timestep; captures start/end temps when crossing zone boundaries."""
+        T_now = self._zone_temperature_metric()
+
+        for (name, t0, t1) in self._zones:
+            # capture T_start once when we enter/at start time
+            if self._zone_Tstart[name] is None and t_now >= t0:
+                self._zone_Tstart[name] = T_now
+
+            # capture and store final zone stats once when we pass the end time
+            if (t_now >= t1) and (name not in self._zone_done) and (self._zone_Tstart[name] is not None):
+                T_start = self._zone_Tstart[name]
+                T_end   = T_now
+                dt      = t1 - t0
+                dT      = T_end - T_start
+                rate_s  = dT / dt
+                rate_m  = rate_s * 60.0
+
+                self._zone_results[name] = dict(
+                    zone=name, t=t1,
+                    T_start=T_start, T_end=T_end,
+                    dT=dT, dt=dt,
+                    rate_s=rate_s, rate_m=rate_m
+                )
+                self._zone_done.add(name)
+
+
+    def _print_zone_summary_end(self):
+        """Print everything at the very end of the simulation."""
+        for (name, _, _) in self._zones:
+            r = self._zone_results.get(name)
+            if r is None:
+                print(f"[ZONE END] {name:<5s}  (not reached / not captured)")
                 continue
 
-            # capture start temperature once, at or just after zone start time
-            if info["T_start"] is None and t_now >= info["t_start"]:
-                info["T_start"] = T_now
+            print(
+                f"[ZONE END] {r['zone']:<5s}  t={r['t']:7.1f}s  "
+                f"T_start={r['T_start']:8.2f}K  T_end={r['T_end']:8.2f}K  "
+                f"dT={r['dT']:8.2f}K  dt={r['dt']:7.1f}s  "
+                f"rate={r['rate_s']: .5f} K/s  ({r['rate_m']: .3f} K/min)"
+            )
 
-            # print once when zone ends
-            if (t_now >= endt) and (zone not in self._zone_printed) and (info["T_start"] is not None):
-                dt = endt - info["t_start"]
-                dT = T_now - info["T_start"]
-
-                # cooling rate (negative means cooling)
-                rate_K_per_s   = dT / dt
-                rate_K_per_min = rate_K_per_s * 60.0
-
-                print(
-                    f"[ZONE END] {zone:5s}  t={endt:7.1f}s  "
-                    f"T_start={info['T_start']:8.2f}K  T_end={T_now:8.2f}K  "
-                    f"dT={dT:8.2f}K  dt={dt:7.1f}s  "
-                    f"rate={rate_K_per_s: .5f} K/s  ({rate_K_per_min: .3f} K/min)"
-                )
-
-                self._zone_printed.add(zone)
 
         
         # Heat diffusion equation #
@@ -1191,7 +1191,7 @@ class ThermoViscoProblem:
         #self._update_values(current=self.functions_current["phi"],previous=self.functions_previous["phi"])
 
         self._update_step_history()
-        self._print_zone_cooling_rate_if_finished(self.t)
+        self._update_zone_summary_each_step(self.t)
 
 
         return
@@ -1564,7 +1564,6 @@ class ThermoViscoProblem:
         self.avg_t_sigma_mid= []
         self.avg_t_sigma_surface= []
         self.temperature_time_array = []
-
         save_times = [0.1, 10, 20, 50]
         self.stress_data = {time: None for time in save_times}
         if self.mesh.comm.rank == 0:
@@ -1598,9 +1597,9 @@ class ThermoViscoProblem:
             F = self.mesh.comm.allreduce(F, op=MPI.SUM)
             print("Resultant force after shift:", F)
             
-            if int(self.t / self.dt) % 50 == 0:  # every 50 steps
-                T_mid = float(self.functions_current["T"].x.array[len(self.functions_current["T"].x.array)//2])
-                print(f"[LIVE] t={self.t:.1f}s  T_mid={T_mid:.2f}K  T_ambient={float(self.functions['T_ambient'].x.array[0]):.2f}K")
+            #if int(self.t / self.dt) % 50 == 0:  # every 50 steps
+            #    T_mid = float(self.functions_current["T"].x.array[len(self.functions_current["T"].x.array)//2])
+            #    print(f"[LIVE] t={self.t:.1f}s  T_mid={T_mid:.2f}K  T_ambient={float(self.functions['T_ambient'].x.array[0]):.2f}K")
 
         # Convert the list to a NumPy array and reshape to a single column
         all_temperatures_array = np.array(all_temperatures).reshape(-1, 1)
@@ -1619,6 +1618,8 @@ class ThermoViscoProblem:
             with open('temperature_time_series.txt', 'w') as f:
                 f.writelines(self.temperature_time_array)
             self._finalize()
+        if self.mesh.comm.rank == 0:
+            self._print_zone_summary_end()
 
         return self.outgoing_dto
 
