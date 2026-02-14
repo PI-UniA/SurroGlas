@@ -333,6 +333,7 @@ class ThermoViscoProblem:
         
         self._set_initial_condition(temp_value=self.material_model.T_init)
         self.create_vtx_files = create_vtx_files
+        self._init_zone_cooling_monitor()
         
         if dirichlet_bc_mech:
             self._set_dirichlet_bc_mech()
@@ -609,7 +610,7 @@ class ThermoViscoProblem:
         elif t < 81.7:  # Glass enters Zone B1
             return 100.0  # Target temperature of B2
         
-        elif t < 266:  # Glass only in Zone B2
+        elif t < 109:  # Glass only in Zone B2
             return 200.0  # Target temperature of C
 
         elif t < 355:  # Glass enters Zone C
@@ -682,7 +683,72 @@ class ThermoViscoProblem:
         else:  # Glass enters Zone B4
             return 67.0  # Final ambient temperature
         
+    def _init_zone_cooling_monitor(self):
+        # zone end times (adjust to YOUR true zone schedule)
+        self.zone_ends = [
+            ("A",   54.7),
+            ("B1",  81.0),
+            ("B2",  109.0),
+            ("C",   355.0),
+            ("D",   370.0),
+            ("RET1",400.0),
+            ("RET2",444.0),
+            ("RET3",457.0),
+            ("F1",  500.0),
+            ("F2",  533.0),
+            ("F3",  570.0),
+            ("B4",  None),   # last zone has no "end"
+        ]
 
+        # will store (t_start, T_start) for each zone
+        self._zone_start_state = {}
+        # print flags so we print once
+        self._zone_printed = set()
+
+        # define zone start times from the end times
+        # e.g. A starts at t0, B1 starts at end(A), etc.
+        prev_end = self.time[0]
+        for name, endt in self.zone_ends:
+            self._zone_start_state[name] = {"t_start": prev_end, "T_start": None, "end": endt}
+            if endt is not None:
+                prev_end = endt
+
+    def _print_zone_cooling_rate_if_finished(self, t_now: float):
+        """
+        Prints cooling rate for each zone once it finishes.
+        Uses middle temperature by default (you can switch to avg).
+        """
+        # pick a temperature metric:
+        # - mid thickness (you already use index 10 in 1D)
+        # - or average temperature
+        T_now = float(self.functions_current["T"].x.array[len(self.functions_current["T"].x.array)//2])
+
+        for zone, info in self._zone_start_state.items():
+            endt = info["end"]
+            if endt is None:
+                continue
+
+            # capture start temperature once, at or just after zone start time
+            if info["T_start"] is None and t_now >= info["t_start"]:
+                info["T_start"] = T_now
+
+            # print once when zone ends
+            if (t_now >= endt) and (zone not in self._zone_printed) and (info["T_start"] is not None):
+                dt = endt - info["t_start"]
+                dT = T_now - info["T_start"]
+
+                # cooling rate (negative means cooling)
+                rate_K_per_s   = dT / dt
+                rate_K_per_min = rate_K_per_s * 60.0
+
+                print(
+                    f"[ZONE END] {zone:5s}  t={endt:7.1f}s  "
+                    f"T_start={info['T_start']:8.2f}K  T_end={T_now:8.2f}K  "
+                    f"dT={dT:8.2f}K  dt={dt:7.1f}s  "
+                    f"rate={rate_K_per_s: .5f} K/s  ({rate_K_per_min: .3f} K/min)"
+                )
+
+                self._zone_printed.add(zone)
 
         
         # Heat diffusion equation #
@@ -1125,7 +1191,7 @@ class ThermoViscoProblem:
         #self._update_values(current=self.functions_current["phi"],previous=self.functions_previous["phi"])
 
         self._update_step_history()
-
+        self._print_zone_cooling_rate_if_finished(self.t)
 
 
         return
@@ -1519,10 +1585,10 @@ class ThermoViscoProblem:
             self._append_outgoing_dto()
             # Get current temperature array
             current_temperature = self.functions_current["T"].x.array[:]
-        # Extend the list with the flattened temperature values
+            # Extend the list with the flattened temperature values
             all_temperatures.extend(current_temperature.flatten().tolist())
 
-            print(f"Time {self.t}: {self.functions_current["T"].x.array[:]}")
+            #print(f"Time {self.t}: {self.functions_current["T"].x.array[:]}")
             import ufl
             from dolfinx import fem
             from mpi4py import MPI
@@ -1531,21 +1597,16 @@ class ThermoViscoProblem:
             F = fem.assemble_scalar(fem.form(self.functions_next["sigma"][0,0]*dx))
             F = self.mesh.comm.allreduce(F, op=MPI.SUM)
             print("Resultant force after shift:", F)
-            #print(self.functions["s_tilde_partial"].x.array[:])
-            #print(self.functions["dsigma_partial"].x.array[:])
-            #print(self.functions["sigma_1d"].x.array[:])
-            #print(self.functions_next["s_tilde_partial"].x.array[:])
-            #print(self.functions_next["sigma_tilde_partial"].x.array[:])
-            #print(self.functions_next["sigma"].x.array[:])
-       
+            
+            if int(self.t / self.dt) % 50 == 0:  # every 50 steps
+                T_mid = float(self.functions_current["T"].x.array[len(self.functions_current["T"].x.array)//2])
+                print(f"[LIVE] t={self.t:.1f}s  T_mid={T_mid:.2f}K  T_ambient={float(self.functions['T_ambient'].x.array[0]):.2f}K")
 
         # Convert the list to a NumPy array and reshape to a single column
         all_temperatures_array = np.array(all_temperatures).reshape(-1, 1)
 
         # Save as a text file, each temperature on a new line
-        np.savetxt("temperature_over_time_0_10.txt", all_temperatures_array, delimiter="\t", fmt="%.6f")
-
-
+        #np.savetxt("temperature_over_time_0_10.txt", all_temperatures_array, delimiter="\t", fmt="%.6f")
         if self.mesh.comm.rank == 0:
             t_end = time()
             # print(f"Solve finished in {t_end - t_start} seconds.")
