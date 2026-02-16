@@ -33,7 +33,7 @@ logger = logging.getLogger("__main__")
 class ThermoViscoProblem:
     def __init__(self,mesh_path: str, problem_dim: int, time: tuple,
                  dt: float, config: dict, model_parameters: dict,analy_parameters:dict,
-                 jit_options: (dict|None) = None ) -> None:
+                 jit_options: (dict|None) = None, zones: list[dict] | None = None) -> None:
         self.dim = problem_dim
         self.mesh, self.cell_tags, self.facet_tags = gmshio.read_from_msh(
             mesh_path, MPI.COMM_WORLD, 0, gdim=problem_dim)
@@ -68,6 +68,14 @@ class ThermoViscoProblem:
         self.create_vtx_files = None
         self.outgoing_dto = OutgoingDto()
         self.execution_time = None
+        
+        # ---------------------------
+        # ZONE TRACKING
+        # ---------------------------
+        self._zones = zones or []  # list of dicts from main.py
+
+        self._zone_results = {}
+        self._zone_start_values = {}
 
 
         return
@@ -333,7 +341,7 @@ class ThermoViscoProblem:
         
         self._set_initial_condition(temp_value=self.material_model.T_init)
         self.create_vtx_files = create_vtx_files
-        self._init_zone_summary()
+        #self._init_zone_summary()
         
         if dirichlet_bc_mech:
             self._set_dirichlet_bc_mech()
@@ -373,7 +381,6 @@ class ThermoViscoProblem:
         self.functions_previous["Tf"].x.array[:] = self.functions_previous["T"].x.array[:]
         self.functions_current["Tf"].x.array[:] = self.functions_current["T"].x.array[:]
         self.functions_previous["xi"].x.array[-1] = Constant(self.mesh,ScalarType(0.)) 
-        #self.functions_next["sigma"].x.array[-1] = 2 * sigma_center
         return
     
 
@@ -393,67 +400,6 @@ class ThermoViscoProblem:
         self.functions_current["Tf_partial"].interpolate(Tf_init)
 
         return
-
-
-
-    
-
-    def _enforce_zero_force(self, z_guess: float = 0.0, maxit: int = 8, tol: float = 1e-10):
-        import ufl
-        from dolfinx import fem
-        from petsc4py.PETSc import ScalarType
-        from mpi4py import MPI
-
-        dx = ufl.Measure("dx", domain=self.mesh)
-
-        z = self.functions["z"]
-        z.value = ScalarType(z_guess)
-
-        # Force resultant: integral sigma_xx dx
-        F_form = fem.form(self.functions_next["sigma"][0, 0] * dx)
-
-        # Secant/Newton with finite-diff slope
-        eps = 1e-8
-
-        def resultant():
-            # recompute strains+stress using current z
-            self._solve_strains()
-            self._solve_stress()
-            val = fem.assemble_scalar(F_form)
-            # MPI sum (safe)
-            return self.mesh.comm.allreduce(val, op=MPI.SUM)
-
-        F0 = resultant()
-        if abs(F0) < tol:
-            return float(z.value)
-
-        z0 = float(z.value)
-        z.value = ScalarType(z0 + eps)
-        F1 = resultant()
-
-        dFdz = (F1 - F0) / eps
-        z.value = ScalarType(z0)
-
-        for _ in range(maxit):
-            F = resultant()
-            if abs(F) < tol:
-                break
-
-            # update
-            z_old = float(z.value)
-            z_new = z_old - F / dFdz
-            z.value = ScalarType(z_new)
-
-            # refresh slope occasionally (robust)
-            z.value = ScalarType(z_new + eps)
-            Fp = resultant()
-            dFdz = (Fp - F) / eps
-            z.value = ScalarType(z_new)
-
-        # final consistent stress
-        self._solve_strains()
-        self._solve_stress()
-        return float(z.value)
 
     def _write_initial_output(self,t: float = 0.0) -> None:
         self.vtx_files = [
@@ -509,248 +455,7 @@ class ThermoViscoProblem:
 
 
         return
-    '''def get_zone(self, x, t):
-        v = 0.1667  # Lehr speed in m/s
-        glass_position = v * t
-
-    # Heat diffusion equation #
-    def _setup_weak_form_T(self) -> None:
-        # Define the left boundary (x = 0)
-
-        def left_boundary(x):
-            return np.isclose(x[0], -25.0)
-
-        # Define the right boundary (x = L)
-        def right_boundary(x):
-            return np.isclose(x[0], 25.0)
-        
-
-        # Mark boundaries
-        facet_indices, facet_markers = [], []
-        boundary_facets_left = locate_entities_boundary(self.mesh, dim=0, marker=left_boundary)
-        boundary_facets_right = locate_entities_boundary(self.mesh, dim=0, marker=right_boundary)
-
-        # Add left boundary (1) and right boundary (2) markers
-        facet_indices.extend(boundary_facets_left)
-        facet_markers.extend([1] * len(boundary_facets_left))
-        facet_indices.extend(boundary_facets_right)
-        facet_markers.extend([2] * len(boundary_facets_right))
-
-        facet_tags = meshtags(self.mesh, 0, np.array(facet_indices, dtype=np.int32), np.array(facet_markers, dtype=np.int32))
-
-        # Measure for the left (ds(1)) and right (ds(2)) boundaries
-        ds = Measure("exterior_facet",domain=self.mesh)
-        dx = Measure("dx",domain=self.mesh)
-        
-        if glass_position <= 20.0:
-            return 'A'
-        elif glass_position <= 40.0:
-            return 'B1'
-        else:
-            return 'B2' 
-        
-
-        
-    def htc_convective(self, t):
-        """
-        Returns an HTC value that is applied only to the zones where glass has reached.
-        Before the time threshold, the cooling is not applied to later zones.
-        """
-        #v = 0.23
-        #return v/t
-        if t < 10:  # Glass only in Zone A
-            return 10.0  # Target temperature of B1
-
-        elif t < 200:  # Glass enters Zone B1
-            return 0.7  # Target temperature of B2
-        
-        elif t < 266:  # Glass only in Zone B2
-            return 21.0  # Target temperature of C
-
-        elif t < 355:  # Glass enters Zone C
-            return 59.0  # Target temperature of D
-        
-        elif t < 370:  # Glass enters Zone D
-            return 0.0  # Target temperature of RET1
-        
-        elif t < 400:  # Glass only in Zone RET1
-            return 97.5  # Target temperature of RET2
-        
-        elif t < 444:  # Glass only in Zone RET2
-            return 97.5  # Target temperature of RET3
-
-        elif t < 457:  # Glass enters Zone RET3
-            return 10.0  # Target temperature of F1
-        
-        elif t < 500:  # Glass only in Zone F1
-            return 94.5  # Target temperature of F2
-
-        elif t < 533:  # Glass enters Zone F2
-            return 94.5  # Target temperature of F3
-
-        elif t < 570:  # Glass enters Zone F3
-            return 78.6  # Target temperature of F4
-
-        else:  # Glass enters Zone B4
-            return 47.4  # Final ambient temperature
             
-            
-            
-        '''
-            
-    def htc_zone(self, t):
-        """
-        Returns an HTC value that is applied only to the zones where glass has reached.
-        Before the time threshold, the cooling is not applied to later zones.
-        """
-        #v = 0.1667
-        if t < 54.7:  # Glass only in Zone A
-            return 280.0  # Target temperature of B1
-
-        elif t < 81.7:  # Glass enters Zone B1
-            return 100.0  # Target temperature of B2
-        
-        elif t < 109:  # Glass only in Zone B2
-            return 200.0  # Target temperature of C
-
-        elif t < 355:  # Glass enters Zone C
-            return 200.0  # Target temperature of D
-        
-        elif t < 370:  # Glass enters Zone D
-            return 250.0  # Target temperature of RET1
-        
-        elif t < 400:  # Glass only in Zone RET1
-            return 300.0  # Target temperature of RET2
-        
-        elif t < 444:  # Glass only in Zone RET2
-            return 350.0  # Target temperature of RET3
-
-        elif t < 457:  # Glass enters Zone RET3
-            return 400.0  # Target temperature of F1
-        
-        elif t < 500:  # Glass only in Zone F1
-            return 440.0  # Target temperature of F2
-
-        elif t < 533:  # Glass enters Zone F2
-            return 500.0  # Target temperature of F3
-
-        elif t < 570:  # Glass enters Zone F3
-            return 530.0  # Target temperature of F4
-
-        else:  # Glass enters Zone B4
-            return 300.0  # Final ambient temperature
-        #return (280.1*v)/t
-
-         
-    # Define spatial-dependent T_ambient
-    def T_ambient_zone(self, t):
-        """
-        Returns ambient temperature in each zone, only applying it when the glass enters the zone.
-        """
-        if t < 54.7:  # Glass only in Zone A
-            return 845.0  # Target temperature of B1
-
-        elif t < 81.7:  # Glass enters Zone B1
-            return 818.0  # Target temperature of B2
-        
-        elif t < 109.7:  # Glass only in Zone B2
-            return 790.0  # Target temperature of C
-
-        elif t < 355:  # Glass enters Zone C
-            return 396.0  # Target temperature of D
-        
-        elif t < 370:  # Glass enters Zone D
-            return 396.0  # Target temperature of RET1
-        
-        elif t < 400:  # Glass only in Zone RET1
-            return 335.0  # Target temperature of RET2
-        
-        elif t < 444:  # Glass only in Zone RET2
-            return 273.0  # Target temperature of RET3
-
-        elif t < 457:  # Glass enters Zone RET3
-            return 261.0  # Target temperature of F1
-        
-        elif t < 500:  # Glass only in Zone F1
-            return 201.0  # Target temperature of F2
-
-        elif t < 533:  # Glass enters Zone F2
-            return 141.0  # Target temperature of F3
-
-        elif t < 570:  # Glass enters Zone F3
-            return 91.0  # Target temperature of F4
-
-        else:  # Glass enters Zone B4
-            return 67.0  # Final ambient temperature
-            
-    def _init_zone_summary(self):
-        # Define your zones with (name, t_start, t_end)
-        # >>> CHANGE these to your real times <<<
-        self._zones = [
-            ("A",  0.0,  54.0),
-            ("B1", 54.0, 81.0),
-            ("B2", 81.0, 109.0),
-        ]
-
-        # Will store computed results per zone
-        self._zone_results = {name: None for (name, _, _) in self._zones}
-        # Internal: store captured start temperature once
-        self._zone_Tstart = {name: None for (name, _, _) in self._zones}
-        # Internal: mark zone done once
-        self._zone_done = set()
-
-
-    def _zone_temperature_metric(self) -> float:
-        """Choose which temperature to use (mid-plane, surface, average)."""
-        arr = self.functions_current["T"].x.array
-        # mid-plane in 1D:
-        return float(arr[len(arr) // 2])
-
-
-    def _update_zone_summary_each_step(self, t_now: float):
-        """Call every timestep; captures start/end temps when crossing zone boundaries."""
-        T_now = self._zone_temperature_metric()
-
-        for (name, t0, t1) in self._zones:
-            # capture T_start once when we enter/at start time
-            if self._zone_Tstart[name] is None and t_now >= t0:
-                self._zone_Tstart[name] = T_now
-
-            # capture and store final zone stats once when we pass the end time
-            if (t_now >= t1) and (name not in self._zone_done) and (self._zone_Tstart[name] is not None):
-                T_start = self._zone_Tstart[name]
-                T_end   = T_now
-                dt      = t1 - t0
-                dT      = T_end - T_start
-                rate_s  = dT / dt
-                rate_m  = rate_s * 60.0
-
-                self._zone_results[name] = dict(
-                    zone=name, t=t1,
-                    T_start=T_start, T_end=T_end,
-                    dT=dT, dt=dt,
-                    rate_s=rate_s, rate_m=rate_m
-                )
-                self._zone_done.add(name)
-
-
-    def _print_zone_summary_end(self):
-        """Print everything at the very end of the simulation."""
-        for (name, _, _) in self._zones:
-            r = self._zone_results.get(name)
-            if r is None:
-                print(f"[ZONE END] {name:<5s}  (not reached / not captured)")
-                continue
-
-            print(
-                f"[ZONE END] {r['zone']:<5s}  t={r['t']:7.1f}s  "
-                f"T_start={r['T_start']:8.2f}K  T_end={r['T_end']:8.2f}K  "
-                f"dT={r['dT']:8.2f}K  dt={r['dt']:7.1f}s  "
-                f"rate={r['rate_s']: .5f} K/s  ({r['rate_m']: .3f} K/min)"
-            )
-
-
-        
         # Heat diffusion equation #
     def _setup_weak_form_T(self) -> None:
         # --- facet dimension (vertices for 1D, edges for 2D, faces for 3D) ---
@@ -797,61 +502,10 @@ class ThermoViscoProblem:
         #htc = self.physical_model.htc
         rho = self.physical_model.rho
         T_0 = self.physical_model.T_0
-        #cp = self.physical_model.cp
-        #k = self.physical_model.k
         velocity = self.physical_model.velocity
 
 
-        # Temperature-dependent properties
-        
-        '''def kth():
-            """
-            Thermal conductivity (W/m·K) as function of current temperature.
-            Paper gives k(T) in Kelvin.
-            """
-            Tk = self.functions_current["T"]
-            k_T = 0.741 + 8.58e-4 * Tk
-            return ufl.max_value(k_T, 1e-12)  # numeric safety
-
-
-        def cp():
-            """
-            Specific heat (J/kg·K) as function of current temperature (Kelvin, piecewise).
-            """
-            Tk = self.functions_current["T"]
-            cp_hi = 1433.0 + 6.5e-3 * Tk                        # T >= 850 K
-            cp_lo =  893.0 + 0.4 * Tk - 18e-8 * Tk**(-2)        # T < 850 K
-            cp_T = ufl.conditional(ge(Tk, 850.0), cp_hi, cp_lo)
-            return ufl.max_value(cp_T, 1e-12)  # numeric safety
-        
-        k_T  = kth()
-        cp_T = cp()
-
-        " Using implicit euler scheme "
-        self.F = (
-            rho*cp_T*((self.functions_current["T"]) - (self.functions_previous["T"])) * self.v * dx
-            + self.dt * (
-            # Laplacian
-            + (alpha)*inner(grad(self.functions_current["T"]),grad(self.v)) * dx 
-            # Right hand side (heat source)
-            - (f) * self.v * dx
-            # Radiation
-            + 1.6e-3*((sigma * epsilon)) * (self.functions_current["T"]**4 - T_ambient**4) * self.v * ds
-            # Convection
-            + 1.6e-3*(htc) * (self.functions_current["T"] - T_ambient) * self.v * ds
-                + ((k_T))*inner(grad(self.functions_current["T"]), grad(self.v)) * dx
-                - (f) * self.v * dx
-                #- self.functions["cooling_rate"] * self.functions_current["T"] * self.v * dx  
-                #+ 3e-3 * (self.functions["cooling_rate"]*htc) * ((self.functions_current["T"]) - (self.functions["T_ambient"])) * self.v * ds(1)
-                + ((sigma * epsilon)) * ((self.functions_current["T"])**4 - (T_ambient)**4) * self.v * ds(1)
-                + (htc) * ((self.functions_current["T"]) - (T_ambient)) * self.v * ds(1)
-                + ((sigma * epsilon)) * ((self.functions_current["T"])**4 - (T_ambient)**4) * self.v * ds(2)
-                + (htc) * ((self.functions_current["T"]) - (T_ambient)) * self.v * ds(2)
-                #+ 3e-3 * (self.functions["cooling_rate"]*htc) * ((self.functions_current["T"]+273.15) - (self.functions["T_ambient"]+273.15)) * self.v * ds(2)
-
-            )
-        )'''
-        
+        # Temperature-dependent properties    
         def kth():
             Tk = self.functions_current["T"]
             return 0.975 + 8.58e-4 * Tk
@@ -946,10 +600,10 @@ class ThermoViscoProblem:
         
         if self.dim == 1:
             left_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["left"])
-            #right_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["right"])       
+            right_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["right"])       
             self.bc = [ 
                         fem.dirichletbc(ScalarType([0.0]), left_bc, self.functionSpaces["U"]),
-                        #fem.dirichletbc(ScalarType([0.0]), right_bc, self.functionSpaces["U"]),
+                        fem.dirichletbc(ScalarType([0.0]), right_bc, self.functionSpaces["U"]),
                     ]
             
         elif self.dim == 2:
@@ -984,61 +638,6 @@ class ThermoViscoProblem:
         return
     
     def _setup_weak_form_u(self) -> None:
-        
-        '''dx = ufl.Measure("dx", domain=self.mesh)
-
-        u = self.u_trial
-        v = self.v_test
-
-        # 1D strains (scalars)
-        eps_u = ufl.grad(u)[0,0]   # du/dx
-        eps_v = ufl.grad(v)[0,0]     # dv/dx
-
-        # Tangent stiffness for 1D from Nielsen Eq.21: DT = B + 4A
-        # (A,B are already computed in your ViscoelasticModel expressions)
-        A  = self.functions["A"]   # or functions_current depending on where you store them
-        B  = self.functions["B"]
-        DT = B + 4.0 * A           # scalar field
-
-        # thermal strain scalar field
-        eps_th = self.functions["thermal_strain"]  # scalar
-
-        # OPTIONAL: history stress term (important if you want full viscoelastic response in the equilibrium solve)
-
-        # Bilinear form (equilibrium)
-        self.a = DT * eps_u * eps_v * dx
-
-        # Linear form: drives contraction + accounts for history stress
-        self.L = DT * eps_th * eps_v * dx'''
-        
-
-        '''dx = ufl.Measure("dx", domain=self.mesh)
-
-        # helper: convert length-1 vector expressions/functions to scalar safely
-        def as_scalar(q):
-            # ufl scalar has shape (), vector(1) has shape (1,)
-            return q if q.ufl_shape == () else q[0]
-
-        if self.dim == 1:
-            # Extract scalar components from vector(1) trial/test
-            u = self.u_trial[0]
-            v = self.v_test[0]
-
-            # Scalar strains: grad(scalar) -> vector(1), so take [0]
-            eps_u = ufl.grad(u)[0]  # du/dx
-            eps_v = ufl.grad(v)[0]  # dv/dx
-
-            # Tangent stiffness DT = B + 4A (must be scalar)
-            A = as_scalar(self.functions["A"])
-            B = as_scalar(self.functions["B"])
-            DT = B + 4.0 * A
-
-            # Thermal strain (scalar)
-            eps_th = as_scalar(self.functions["thermal_strain"])
-
-            # Bilinear and linear forms
-            self.a = DT * eps_u * eps_v * dx
-            self.L = DT * eps_th * eps_v * dx'''
             
         ds = Measure("exterior_facet", domain=self.mesh) 
         dx = Measure("dx", domain=self.mesh) 
@@ -1090,6 +689,96 @@ class ThermoViscoProblem:
 
         return
 
+    def set_zones_from_main(self, ZONES):
+        """
+        Receive zone table from main.py.
+        Each zone is dict(name, t0, t1, htc, T_amb).
+        """
+        self._zones_main = [(z["name"], float(z["t0"]), float(z["t1"])) for z in ZONES]
+        self._zone_results = {}
+        self._zone_start_values = {}
+        self._zone_last_name = None
+
+
+    def _zone_mean_temperature(self):
+        # You can choose mean temperature or surface node temp. Here: mean.
+        return float(np.mean(self.functions_current["T"].x.array))
+
+
+    def _capture_zone_transitions(self, t: float):
+        """
+        Called every timestep after T is solved, to store:
+        T_start, T_end, dt, rate.
+        """
+        if not hasattr(self, "_zones_main"):
+            return
+
+        # determine current zone name
+        zone_name = None
+        for (name, t0, t1) in self._zones_main:
+            if t0 <= t < t1:
+                zone_name = name
+                break
+        if zone_name is None:
+            zone_name = self._zones_main[-1][0]
+
+        T_now = self._zone_mean_temperature()
+
+        # zone entry
+        if self._zone_last_name != zone_name:
+            self._zone_start_values[zone_name] = {
+                "t_start": float(t),
+                "T_start": float(T_now),
+            }
+            self._zone_last_name = zone_name
+
+        # zone end detection: if we just stepped beyond some zone end
+        # We check all zones that ended at time t (or just passed it)
+        for (name, t0, t1) in self._zones_main:
+            # if we have start info, and we just crossed t1
+            if name in self._zone_start_values and name not in self._zone_results:
+                if t >= t1:
+                    t_start = self._zone_start_values[name]["t_start"]
+                    T_start = self._zone_start_values[name]["T_start"]
+                    T_end = float(T_now)
+                    dt_zone = float(t1 - t_start) if (t1 - t_start) != 0 else 1e-12
+                    dT = float(T_end - T_start)
+                    rate_s = dT / dt_zone
+                    rate_m = rate_s * 60.0
+
+                    self._zone_results[name] = {
+                        "zone": name,
+                        "t": float(t1),
+                        "T_start": float(T_start),
+                        "T_end": float(T_end),
+                        "dT": float(dT),
+                        "dt": float(dt_zone),
+                        "rate_s": float(rate_s),
+                        "rate_m": float(rate_m),
+                    }
+
+
+    def _print_zone_summary_end(self):
+        """Print everything at the very end of the simulation."""
+        if not hasattr(self, "_zones_main"):
+            return
+        if self.mesh.comm.rank != 0:
+            return
+
+        for (name, _, _) in self._zones_main:
+            r = self._zone_results.get(name)
+            if r is None:
+                print(f"[ZONE END] {name:<5s}  (not reached / not captured)")
+                continue
+
+            print(
+                f"[ZONE END] {r['zone']:<5s}  t={r['t']:7.1f}s  "
+                f"T_start={r['T_start']:8.2f}K  T_end={r['T_end']:8.2f}K  "
+                f"dT={r['dT']:8.2f}K  dt={r['dt']:7.1f}s  "
+                f"rate={r['rate_s']: .5f} K/s  ({r['rate_m']: .3f} K/min)"
+            )
+
+
     def _update_step_history(self) -> None:
         """
         The ONLY place where we copy current -> previous for history variables.
@@ -1132,25 +821,23 @@ class ThermoViscoProblem:
     def solve_timestep(self,t) -> None:
         #print(f"t={t}")
         logger.debug(f"t={t}")
-        # Update HTC dynamically only in active zones
-        #def htc_expr(x):
-        #    return np.array([self.htc_zone(t) ], dtype=ScalarType)
-        #self.functions["htc"].interpolate(htc_expr)
-
-        # Update T_ambient dynamically only in active zones
+        
+        '''# Update HTC dynamically only in active zones
         def htc_expr(x):
             return np.array([self.htc_zone(t) ], dtype=ScalarType)
         self.functions["htc"].interpolate(htc_expr)
-        
+
+        # Update T_ambient dynamically only in active zones
         def T_ambient_expr(x):
             return np.array([self.T_ambient_zone(t) ], dtype=ScalarType)
         self.functions["T_ambient"].interpolate(T_ambient_expr)
         
-        '''def cooling_rate_expr(x):
+        def cooling_rate_expr(x):
             return np.array([self.cooling_rate(t) ], dtype=ScalarType)
         self.functions["cooling_rate"].interpolate(cooling_rate_expr)'''
         
         self._solve_T()
+        self._capture_zone_transitions(t)
         self._solve_Tf()
         self._solve_u()
         self._solve_strains()
@@ -1158,11 +845,7 @@ class ThermoViscoProblem:
         self._solve_strains()
         self._solve_stress()
         self.enforce_zero_force_shift()
-        #self.force_shift_c.append(c)
-        #z_old = float(self.functions["z"].value)
-        #z_new = self._enforce_equilibrium_z(z_init=z_old)
-        #self._enforce_zero_force(z_guess=float(self.functions["z"].value))
-        #self.enforce_equilibrium_z(z_init=float(self.functions["z"].value))
+        
         self.avg_T.append([np.average(self.functions_current["T"].x.array[:])])
         self.T_0_edge.append([(self.functions_current["T"].x.array[0])])
         self.T_0_middle.append([(self.functions_current["T"].x.array[10])])
@@ -1178,20 +861,10 @@ class ThermoViscoProblem:
         
         if self.create_vtx_files:
             self._write_output()
-        # For some computations, functions_previous["T"] and functions_previous["displacement"] is needed
-        # thus, we update only at the end of each timestep
-        
-        
-        #self._update_values(current=self.functions["phi_v"],previous=self.functions_previous["phi_v"])
-        
-
-        #self._update_values(current=self.functions["U"],previous=self.functions_previous["U"])
-        
-
-        #self._update_values(current=self.functions_current["phi"],previous=self.functions_previous["phi"])
-
+            
         self._update_step_history()
-        self._update_zone_summary_each_step(self.t)
+
+
 
 
         return
@@ -1366,11 +1039,6 @@ class ThermoViscoProblem:
         #self.functions["kth"].interpolate(self.material_model.expressions["kth"])
         #self.functions["cp"].interpolate(self.material_model.expressions["cp"])
         self.functions["phi_v"].interpolate(self.material_model.expressions["phi_v"])
-        #expr_k  = fem.Expression(self.kth(), self.functionSpaces["T"].element.interpolation_points())
-        #self.functions["kth"].interpolate(expr_k)
-
-        #expr_cp = fem.Expression(self.cp(),  self.functionSpaces["T"].element.interpolation_points())
-        #self.functions["cp"].interpolate(expr_cp)
 
 
         return
@@ -1409,7 +1077,6 @@ class ThermoViscoProblem:
         self.functions["thermal_strain"].interpolate(
             self.material_model.expressions["thermal_strain"]
         )
-        #self._update_values(current=self.functions["thermal_strain"], previous=self.functions_previous["thermal_strain"])
         return
     
 
@@ -1465,7 +1132,6 @@ class ThermoViscoProblem:
     def __update_T_next(self) -> None:
 
         self.functions_next["T"].interpolate(self.material_model.expressions["T_next"])
-        #self._update_values(current=self.functions_next["T"],previous=self.functions_current["T"])
         return
     
     def __update_phi(self) -> None:
@@ -1494,11 +1160,6 @@ class ThermoViscoProblem:
         self.functions_next["s_partial"].interpolate(
             self.material_model.expressions["s_partial_next"]
         )
-        #self._update_values(current=self.functions["ds_partial"],previous=self.functions_previous["ds_partial"])
-        #self._update_values(current=self.functions_next["s_tilde_partial"],previous=self.functions_current["s_tilde_partial"])
-        #self._update_values(current=self.functions_next["s_partial"],previous=self.functions_current["s_partial"]) 
-        #self._update_values(current=self.functions_next["s_tilde_partial"],previous=self.functions_current["s_tilde_partial"])
-        #self._update_values(current=self.functions_next["s_partial"],previous=self.functions_current["s_partial"]) 
         return
     
     
@@ -1534,17 +1195,6 @@ class ThermoViscoProblem:
         self.functions_next["total_tilde_partial"].interpolate(
             self.material_model.expressions["total_tilde_partial"]
         )
-        '''self.functions["elastic_stress"].interpolate(
-            self.material_model.expressions["elastic_stress"]
-        )
-        #self._update_values(current=self.functions_next["sigma"],previous=self.functions_current["sigma"])
-        self._update_values(current=self.functions["xi"], previous=self.functions_previous["xi"])
-        )'''
-        #self._update_values(current=self.functions["U"], previous=self.functions_previous["U"])
-        #self._update_values(current=self.functions["xi"], previous=self.functions_previous["xi"])
-        #self._update_values(current=self.functions["thermal_strain"], previous=self.functions_previous["thermal_strain"])
-        #self._update_values(current=self.functions["volumetric_strain"], previous=self.functions_previous["volumetric_strain"])
-        #self._update_values(current=self.functions_next["sigma"],previous=self.functions_current["sigma"])
 
         return
     
@@ -1597,9 +1247,6 @@ class ThermoViscoProblem:
             F = self.mesh.comm.allreduce(F, op=MPI.SUM)
             print("Resultant force after shift:", F)
             
-            #if int(self.t / self.dt) % 50 == 0:  # every 50 steps
-            #    T_mid = float(self.functions_current["T"].x.array[len(self.functions_current["T"].x.array)//2])
-            #    print(f"[LIVE] t={self.t:.1f}s  T_mid={T_mid:.2f}K  T_ambient={float(self.functions['T_ambient'].x.array[0]):.2f}K")
 
         # Convert the list to a NumPy array and reshape to a single column
         all_temperatures_array = np.array(all_temperatures).reshape(-1, 1)
@@ -1618,9 +1265,9 @@ class ThermoViscoProblem:
             with open('temperature_time_series.txt', 'w') as f:
                 f.writelines(self.temperature_time_array)
             self._finalize()
-        if self.mesh.comm.rank == 0:
-            self._print_zone_summary_end()
-
+        #if self.mesh.comm.rank == 0:
+        #    self._print_zone_summary_end()
+        self._print_zone_summary_end()
         return self.outgoing_dto
 
 

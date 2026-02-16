@@ -1,79 +1,93 @@
-from geometry import create_mesh
-from ThermoViscoProblem import ThermoViscoProblem
-import matplotlib.pyplot as plt
-import numpy as np
-from AnalyticalSoln import AnalyticalSoln
-from OutgoingDto import OutgoingDto
 import logging
 import numpy as np
-import os
-import psutil
+import matplotlib.pyplot as plt
+from geometry import create_mesh
+from mpi4py import MPI
+from petsc4py.PETSc import ScalarType
+
+from ThermoViscoProblem import ThermoViscoProblem
+from OutgoingDto import OutgoingDto
+from AnalyticalSoln import AnalyticalSoln
+from pathlib import Path
 
 
+def main():
+    # ----------------------------
+    # 1) Logging (keep)
+    # ----------------------------
+    logger = logging.getLogger(__name__)
+    logger.setLevel("DEBUG")
+    logger.propagate = False
 
-# Logging
-logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
-logger.propagate = False
-formatter = logging.Formatter(
-    "{asctime} - {levelname} - {filename} - {message}",
-    style="{",
-    datefmt="%Y-%m-%d %H:%M",
-)
+    formatter = logging.Formatter(
+        "{asctime} - {levelname} - {filename} - {message}",
+        style="{",
+        datefmt="%Y-%m-%d %H:%M",
+    )
 
-console_handler = logging.StreamHandler()
-console_handler.setLevel("DEBUG")
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+    if not logger.handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel("DEBUG")
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
 
-file_handler = logging.FileHandler("app.log", mode="a", encoding="utf-8")
-file_handler.setLevel("INFO")
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+        file_handler = logging.FileHandler("app.log", mode="a", encoding="utf-8")
+        file_handler.setLevel("INFO")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
+    # ----------------------------
+    # 2) JIT options (keep)
+    # ----------------------------
+    jit_options = {"cffi_extra_compile_args": ["-O3", "-march=native"]}
 
+    # ----------------------------
+    # 3) User controls (edit here)
+    # ----------------------------
+    BASE_DIR = Path(__file__).resolve().parent
+    mesh_dir = BASE_DIR/"mesh"
+    mesh_dir.mkdir(parents=True, exist_ok=True)
 
+    mesh_path = mesh_dir/"glass_1d.msh"   # output filename
+    mesh_path = str(mesh_path)
+    
+    problem_dim = 1
 
-# Enable full compiler optimizations for generated
-# C++ code
-jit_options = {
-            "cffi_extra_compile_args": ["-O3", "-march=native"]
-        }
+    time = (0.0, 150.0)   # (t_start, t_end)
+    n_steps = 1500
+    dt = 0.1
 
-# Time domain (whole time domain or for each zone)
-t_start = 0.0
-t_end = 100
-time = (t_start, t_end)
+    # thickness and nodes used 
+    THICKNESS_MM = 15
+    N_THICKNESS_NODES = 20
+    # If you later go 2D:
+    N_LENGTH_NODES = 10          # nodes along length (y) (example)
+    LENGTH_M = 1.0               # length in meters
 
-dt = 0.1
-t = t_start
+    # ----------------------------
+    # 4) Zone table: edit here (single source of truth)
+    # ----------------------------
+    ZONES = [
+        dict(name="A",  t0=0.0,   t1=54.7,  htc=280.0,  T_amb=845.0),
+        dict(name="B1", t0=54.7,  t1=81.7,  htc=100.0,  T_amb=818.0),
+        dict(name="B2", t0=81.7,  t1=109.0, htc=200.0,  T_amb=790.0),
+        dict(name="C",  t0=109.0,   t1=355.0,  htc=200.0,  T_amb=396.0),
+        dict(name="D", t0=355.0,  t1=370.0,  htc=250.0,  T_amb=396.0),
+    ]
 
-# Problem dimensions (1D, 2D, or 3D)
-problem_dim = 1
+    # ----------------------------
+    # 5) FEM element config (edit if needed)
+    # ----------------------------
+    config = {
+        "T":     {"element": "CG", "degree": 1},
+        "U":     {"element": "CG", "degree": 1},
+        "sigma": {"element": "CG", "degree": 1},
 
-# Name of the glass zone 
-Zone_name = "all"
-
-mesh_path = f"mesh{problem_dim}d.msh"
-
-# Create new mesh for simulation
-create_new_mesh = True
-
-# Create VTX Files for visualization in Paraview
-create_vtx_files = True
-
-try:
-    if create_new_mesh:
-        create_mesh(path=mesh_path,dim=problem_dim, name=Zone_name, t_start=t_start, t_end=t_end)
-        logger.info("Mesh created")
-
-    fe_config = {
-        "T":        {"element": "CG", "degree": 1},
-        "U":        {"element": "CG", "degree": 1},
-        "sigma":    {"element": "CG", "degree": 1},
-        
     }
 
+    # ----------------------------
+    # 6) Model parameters (your real values)
+    # ----------------------------
     model_params = {
         # Volumetric heat dissipation
         "f": 0.0,
@@ -108,8 +122,10 @@ try:
         "Young's_modulus": 70.0e6, # from GP into MPa
         "Possion_ratio": 0.22,
     }
-
-    analytical_constants = {
+    # ----------------------------
+    # 7) analytical parameters 
+    # ----------------------------
+    analytical_consts = {
             "a":    0.2957,
             "c":    1.676e3,
             "Tb":   779.9,
@@ -119,91 +135,176 @@ try:
             "k":    -1.231e8,
             "lambda_":   0.7012,
     }
+    # ----------------------------
+    # 8) Helpers for zone controls (YOU SAID YOU WANT TO KEEP THESE)
+    # ----------------------------
+    def lookup_zone_value(t: float, key: str, default=None):
+        for z in ZONES:
+            if z["t0"] <= t < z["t1"]:
+                return z.get(key, default)
+        if ZONES:
+            return ZONES[-1].get(key, default)
+        return default
 
-    model = ThermoViscoProblem(mesh_path=mesh_path,problem_dim=problem_dim,
-                            config=fe_config,time=time,dt=dt,model_parameters=model_params, analy_parameters=analytical_constants,
-                            jit_options=jit_options)
+    def current_zone_name(t: float) -> str:
+        for z in ZONES:
+            if z["t0"] <= t < z["t1"]:
+                return z["name"]
+        return ZONES[-1]["name"] if ZONES else "NA"
 
-    model.setup(dirichlet_bc_mech=True,create_vtx_files=create_vtx_files)
-    dto = model.solve()
-    result = dto.to_json()
-    
-    logger.info(f"Simulation executed. - Execution Time: {np.round(model.execution_time,6)}s")
-    logger.info(f"Number of elements in OutgoingDto: {dto.num_elements()}")
-    logger.info("Code executed")
+    def update_zone_controls(model: ThermoViscoProblem, t: float):
+        # Ambient temperature Function used in your weak form
+        Tamb = float(lookup_zone_value(t, "T_amb", default=model_params["T_0"]))
 
-except Exception as e:
-    logger.error(e, exc_info=True)
-    result = OutgoingDto().to_json()
+        def T_ambient_expr(x):
+            return np.full(x.shape[1], Tamb, dtype=ScalarType)
+
+        model.functions["T_ambient"].interpolate(T_ambient_expr)
+
+        # HTC update must be USED in weak form: htc = self.functions["htc"]
+        htc_val = float(lookup_zone_value(t, "htc", default=0.0))
+
+        def htc_expr(x):
+            return np.full(x.shape[1], htc_val, dtype=ScalarType)
+
+        model.functions["htc"].interpolate(htc_expr)
+
+        return Tamb, htc_val
+
+    def patch_model_zone_functions(model: ThermoViscoProblem):
+        # patch methods (so your existing code can call them if needed)
+        model.T_ambient_zone = lambda t: float(lookup_zone_value(t, "T_amb", default=model_params["T_0"]))
+        model.htc_zone = lambda t: float(lookup_zone_value(t, "htc", default=0.0))
+
+        # wrap solve_timestep to enforce zone updates before solve
+        original_solve_timestep = model.solve_timestep
+
+        def solve_timestep_wrapped(t: float):
+            Tamb, htc_val = update_zone_controls(model, t)
+
+            # print/log zone entry once
+            name = current_zone_name(t)
+            if not hasattr(model, "_last_zone_printed"):
+                model._last_zone_printed = None
+
+            if model._last_zone_printed != name and model.mesh.comm.rank == 0:
+                logger.info(f"[ZONE] Enter {name:>3s} at t={t:8.2f}s | T_amb={Tamb:8.2f}K | htc={htc_val:8.2f}")
+
+            model._last_zone_printed = name
+            return original_solve_timestep(t)
+
+        model.solve_timestep = solve_timestep_wrapped
+
+        # give ThermoViscoProblem the zone list for summary printing
+        model.set_zones_from_main(ZONES)
+
+    # ----------------------------
+    # 9) Run simulation
+    # ----------------------------
+    REGENERATE_MESH = True
+    if REGENERATE_MESH:
+        create_mesh(
+            path=mesh_path,
+            dim=problem_dim,
+            name="glass_1d",
+            t_start=0,
+            t_end=0,
+            thickness_mm=THICKNESS_MM,
+            n_thickness_nodes=N_THICKNESS_NODES,
+            # these are ignored in dim=1 but safe to pass
+            length_m=LENGTH_M,
+            n_length_nodes=N_LENGTH_NODES,
+        )
+
+    if not Path(mesh_path).exists():
+        raise FileNotFoundError(f"Mesh not found after create_mesh: {mesh_path}")
 
 
+    try:
+        model = ThermoViscoProblem(
+            mesh_path=mesh_path,
+            problem_dim=problem_dim,
+            time=time,
+            dt=dt,
+            config=config,
+            model_parameters=model_params,
+            analy_parameters=analytical_consts,
+            jit_options=jit_options,
+        )
 
-t_ = np.linspace(start=0.0, stop=100, num=1000)
-#t_ = np.logspace(-2, 4, num=100)
-#Variables of analytical equations in arrays over time loop
+        model.setup(dirichlet_bc_mech=True, create_vtx_files=True)
+        patch_model_zone_functions(model)
 
-T_ = [AnalyticalSoln .T(t_i, constants=analytical_constants) for t_i in t_]
-phi_ = [AnalyticalSoln.phi(t_i, constants=analytical_constants) for t_i in t_]
-E_ = [AnalyticalSoln.E(t_i, constants=analytical_constants) for t_i in t_]
-xi_ = [AnalyticalSoln.xi(t_i, constants=analytical_constants) for t_i in t_]
-epsilon_ = [AnalyticalSoln.epsilon(t_i, constants=analytical_constants) for t_i in t_]
-dedt = [AnalyticalSoln.de(t_i, constants=analytical_constants) for t_i in t_]
-sigma_ = [AnalyticalSoln.stress(t_i, constants=analytical_constants) for t_i in t_]
-sigma_analytical_ = [AnalyticalSoln.sigma_analytical(t_i, constants=analytical_constants) for t_i in t_]
+        dto = model.solve()
+
+        if model.mesh.comm.rank == 0:
+            logger.info(f"Simulation executed. - Execution Time: {np.round(model.execution_time, 6)}s")
+            logger.info(f"Number of elements in OutgoingDto: {dto.num_elements()}")
+            logger.info("Code executed")
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+        dto = OutgoingDto()
+
+    # ----------------------------
+    # 10) Plotting (keep, with your requested styling)
+    # ----------------------------
+    if problem_dim == 1 and model.mesh.comm.rank == 0:
+        # time vector for plots: use simulation history length
+        #nT = len(model.avg_T)
+        #t_ = np.linspace(start=time[0] + dt, stop=time[0] + dt * nT, num=nT)
+        t_ = np.linspace(start=0.0, stop=time[1], num=n_steps)
+        plt.rcParams["font.family"] = "Times New Roman"
+        plt.rcParams["font.size"] = 15
+
+        # Temperature plot
+        #plt.figure(dpi=600)
+        plt.plot(t_, model.T_0_edge, label="Simulated results at 1st node", color="b")
+        plt.plot(t_, model.avg_T, label="Simulated results average nodes", color="r")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Temperatures (K)")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        # Stress plot (dpi=600, y-limits, styles)
+        #plt.figure(dpi=600)
+        plt.plot(t_, model.avg_t_sigma_surface, label="Stresses at surface", color="red", linestyle="-")
+        plt.plot(t_, model.avg_t_sigma_mid, label="Stresses at center", color="black", linestyle="--")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Stress (MPa)")
+        plt.legend()
+        plt.grid(True)
+        plt.xlim(0, t_[-1])
+        plt.show()
+
+        # Time->distance plots
+        v_m_per_s = 9.85 / 60.0
+        x_ = v_m_per_s * np.asarray(t_)
+        L = 100.0
+        mask = x_ <= L
+
+        #plt.figure(dpi=600)
+        plt.plot(x_[mask], np.asarray(model.T_0_edge)[mask], label="Surface temperature", color="b")
+        plt.xlabel("Lehr distance x (m)")
+        plt.ylabel("Surface temperature (K)")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        #plt.figure(dpi=600)
+        plt.plot(x_[mask], np.asarray(model.avg_t_sigma_surface)[mask], label="Surface stress", color="red", linestyle="-")
+        plt.plot(x_[mask], np.asarray(model.avg_t_sigma_mid)[mask], label="Center stress", color="black", linestyle="--")
+        plt.xlabel("Lehr distance x (m)")
+        plt.ylabel("Stress (MPa)")
+        #plt.ylim(-20, 10)
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 
 
-#fig, axs = plt.subplots(2, 3)
-plt.rcParams['font.family'] = "Times New Roman"
-plt.rcParams['font.size'] = 15
-
-# Temperatures
-
-#plt.plot(t_, T_, label='Analytical results', color='g')
-#
-plt.plot(t_, model.T_0_edge, label='Simulated results at 1st node', color='b')
-#plt.plot(t_, model.T_0_middle, label='Simulated results at middle node', color='g')
-plt.plot(t_, model.avg_T, label='Simulated results average nodes', color='r')
-plt.xlabel('Time (s)')
-plt.ylabel('Tempertures (K)')
-plt.legend()
-plt.grid(True)
-plt.show()
-
-# Surface stress: solid red
-plt.plot(t_, model.avg_t_sigma_surface, label='Stresses at surface', color='red', linestyle='-')
-plt.plot(t_, model.avg_t_sigma_mid, label='Stresses at center', color='black', linestyle='--')
-plt.xlabel('Time (s)')
-plt.ylabel('Stress (MPa)')
-plt.legend()
-plt.grid(True)
-plt.xlim(0, t_[-1]) 
-plt.show()
-
-print("len(t_) =", len(t_))
-print("len(surface stress) =", len(model.avg_t_sigma_surface))
-print("len(mid stress) =", len(model.avg_t_sigma_mid))
-print("t_ max =", t_[-1]) 
-
-   
-v_m_per_s = 9.85 / 60.0            # m/s
-x_ = v_m_per_s * np.asarray(t_)     # meters
-L = 100.0  # m (example total length)
-mask = x_ <= L
-# Plot 2: Surface temperature vs length (NEW)
-plt.plot(x_[mask], (model.T_0_edge), label='Surface temperature', color='b')
-plt.xlabel('Lehr distance x (m)')
-plt.ylabel('Surface temperature (K)')
-plt.legend()
-plt.grid(True)
-plt.show()
-
-plt.plot(x_[mask], (model.avg_t_sigma_surface), label='Surface temperature', color='r')
-plt.plot(x_[mask], (model.avg_t_sigma_mid), label='Surface temperature', color='b')
-plt.xlabel('Lehr distance x (m)')
-plt.ylabel('Surface temperature (K)')
-plt.legend()
-plt.grid(True)
-plt.show()
+if __name__ == "__main__":
+    main()
 
 
 '''
@@ -330,7 +431,6 @@ plt.show()
 # try to change cooling rate import and/or change htc values
 
 
-
 # try kth and cp not expressions, try as cooling rate in heat equation
 # print the values of k_T and cp_T to know their values are write or wrong
 
@@ -353,4 +453,6 @@ plt.show()
 #make the refernce grenzbach grahs and cooling rate controlling by htc
 #try to change the htc over zones and print "cooling rates" for each end zone to detect
 #put all the variables in main.py all like geometry and others
-# reconrd thickness'''
+# reconrd thickness
+# adapt htc functions and comment the unneeded lines
+# '''
