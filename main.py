@@ -53,12 +53,12 @@ def main():
     
     problem_dim = 1
 
-    time = (0.0, 150.0)   # (t_start, t_end)
-    n_steps = 1500
+    time = (0.0, 500.0)   # (t_start, t_end)
+    n_steps = 5000
     dt = 0.1
 
     # thickness and nodes used 
-    THICKNESS_MM = 15
+    THICKNESS_MM = 1000
     N_THICKNESS_NODES = 20
     # If you later go 2D:
     N_LENGTH_NODES = 10          # nodes along length (y) (example)
@@ -68,9 +68,9 @@ def main():
     # 4) Zone table: edit here (single source of truth)
     # ----------------------------
     ZONES = [
-        dict(name="A",  t0=0.0,   t1=54.7,  htc=280.0,  T_amb=845.0),
-        dict(name="B1", t0=54.7,  t1=81.7,  htc=100.0,  T_amb=818.0),
-        dict(name="B2", t0=81.7,  t1=109.0, htc=200.0,  T_amb=790.0),
+        dict(name="A",  t0=0.0,   t1=138.46,  htc=280.0,  T_amb=813.0),
+        dict(name="B1", t0=138.46,  t1=364.0,  htc=100.0,  T_amb=753.0),
+        dict(name="B2", t0=364.0,  t1=502.0, htc=200.0,  T_amb=673.0),
         dict(name="C",  t0=109.0,   t1=355.0,  htc=200.0,  T_amb=396.0),
         dict(name="D", t0=355.0,  t1=370.0,  htc=250.0,  T_amb=396.0),
     ]
@@ -260,7 +260,7 @@ def main():
         # Temperature plot
         #plt.figure(dpi=600)
         plt.plot(t_, model.T_0_edge, label="Simulated results at 1st node", color="b")
-        plt.plot(t_, model.avg_T, label="Simulated results average nodes", color="r")
+        #plt.plot(t_, model.avg_T, label="Simulated results average nodes", color="r")
         plt.xlabel("Time (s)")
         plt.ylabel("Temperatures (K)")
         plt.legend()
