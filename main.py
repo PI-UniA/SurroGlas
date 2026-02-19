@@ -68,9 +68,9 @@ def main():
     # 4) Zone table: edit here (single source of truth)
     # ----------------------------
     ZONES = [
-        dict(name="A",  t0=0.0,   t1=138.46,  htc=280.0,  T_amb=813.0),
-        dict(name="B1", t0=138.46,  t1=364.0,  htc=100.0,  T_amb=753.0),
-        dict(name="B2", t0=364.0,  t1=502.0, htc=200.0,  T_amb=673.0),
+        dict(name="A",  t0=0.0,   t1=150,  htc=280.0,  T_amb=810.0),
+        dict(name="B1", t0=150,  t1=360,  htc=100.0,  T_amb=760.0),
+        dict(name="B2", t0=360,  t1=480, htc=200.0,  T_amb=660.0),
         dict(name="C",  t0=109.0,   t1=355.0,  htc=200.0,  T_amb=396.0),
         dict(name="D", t0=355.0,  t1=370.0,  htc=250.0,  T_amb=396.0),
     ]
