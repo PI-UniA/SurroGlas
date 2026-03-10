@@ -1,0 +1,8 @@
+{
+    "model": "FEM",
+    "training_time": null,
+    "inference_time": null,
+    "l2_temp": null,
+    "l2_stress": null,
+    "notes": "FEM dataset generation + parameter plots saved."
+}

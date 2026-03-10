@@ -1,0 +1,20 @@
+{
+    "Nx": 49,
+    "Nt": 500,
+    "input_dim": 4,
+    "enc_width": 218,
+    "enc_depth": 2,
+    "dec_width": null,
+    "conv_channels": 16,
+    "conv_depth": 2,
+    "epochs": 2000,
+    "lr": 0.001,
+    "weight_decay": 1e-05,
+    "batch_size": 16,
+    "seed": 42,
+    "infer_batch_size": 4,
+    "save_dir": "MIONET",
+    "train_dir": "results/train",
+    "test_dir": "results/test_unseen",
+    "device": "mps"
+}

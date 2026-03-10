@@ -1,0 +1,13 @@
+{
+    "model": "MIONet",
+    "split": "train",
+    "device": "mps",
+    "num_samples": 16,
+    "batch_size": 4,
+    "inference_time_total_s": 0.009263038635253906,
+    "inference_time_per_sample_s": 0.0005789399147033691,
+    "l2_temp": 0.0018325736522123862,
+    "l2_stress": 0.004327587372510002,
+    "l2_temp_percent": 0.18325736522123862,
+    "l2_stress_percent": 0.43275873725100017
+}

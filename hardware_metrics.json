@@ -1,0 +1,20 @@
+{
+    "timestamp": "2025-11-04T12:05:51.211945+00:00",
+    "OS": "Darwin 24.6.0 (arm64)",
+    "Python version": "3.13.3",
+    "NumPy version": "2.2.5",
+    "PyTorch version": "2.7.1",
+    "CPU": "arm",
+    "CPU cores (logical)": 10,
+    "CPU cores (physical)": 10,
+    "CPU threads used by PyTorch": 8,
+    "Total RAM (GB)": 16.0,
+    "Available RAM (GB)": 3.0,
+    "CUDA available": false,
+    "CUDA device count": 0,
+    "MPS (Apple Metal) available": true,
+    "torch.compile available": true,
+    "OMP_NUM_THREADS": "default",
+    "MKL_NUM_THREADS": "default",
+    "Default device": "unknown"
+}

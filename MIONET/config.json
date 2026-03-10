@@ -1,0 +1,22 @@
+{
+    "Nx": 49,
+    "Nt": 500,
+    "input_dim": 4,
+    "p": 128,
+    "branch_width": 128,
+    "branch_depth": 3,
+    "trunk_width": 256,
+    "trunk_depth": 4,
+    "epochs": 2000,
+    "lr": 0.001,
+    "weight_decay": 1e-06,
+    "batch_size": 16,
+    "seed": 42,
+    "infer_batch_size": 8,
+    "save_dir": "MIONET",
+    "train_dir": "results/train",
+    "test_dir": "results/test_unseen",
+    "wT": 0.5,
+    "wS": 0.5,
+    "device": "mps"
+}

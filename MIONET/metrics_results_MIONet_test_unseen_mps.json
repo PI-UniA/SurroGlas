@@ -1,0 +1,13 @@
+{
+    "model": "MIONet",
+    "split": "test_unseen",
+    "device": "mps",
+    "num_samples": 16,
+    "batch_size": 4,
+    "inference_time_total_s": 0.009099960327148438,
+    "inference_time_per_sample_s": 0.0005687475204467773,
+    "l2_temp": 0.01809798902003572,
+    "l2_stress": 0.05245078267654536,
+    "l2_temp_percent": 1.809798902003572,
+    "l2_stress_percent": 5.245078267654536
+}

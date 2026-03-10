@@ -1,0 +1,12 @@
+{
+    "split": "train",
+    "device": "mps",
+    "num_samples": 16,
+    "batch_size": 8,
+    "inference_time_total_s": 0.30556511878967285,
+    "inference_time_per_sample_s": 0.019097819924354553,
+    "l2_temp": 0.04775451425160549,
+    "l2_stress": 0.11387088512917364,
+    "l2_temp_percent": 4.775451425160549,
+    "l2_stress_percent": 11.387088512917364
+}

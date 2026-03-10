@@ -1,0 +1,11 @@
+{
+    "Nx": 49,
+    "Nt": 500,
+    "param_dim": 4,
+    "n_scales": 3,
+    "scale_width": 16,
+    "width": 64,
+    "depth": 6,
+    "modes_x": 16,
+    "modes_t": 16
+}

@@ -1,0 +1,56 @@
+{
+  "timestamp_utc": "2025-11-04T12:32:43.579501+00:00",
+  "os": "Darwin 24.6.0 (arm64)",
+  "python": "3.13.3",
+  "numpy": "2.2.5",
+  "scipy": "1.15.2",
+  "cpu_name": "arm",
+  "cpu_cores_logical": 10,
+  "cpu_cores_physical": 10,
+  "OMP_NUM_THREADS": "8",
+  "OPENBLAS_NUM_THREADS": "8",
+  "MKL_NUM_THREADS": "8",
+  "VECLIB_MAXIMUM_THREADS": "8",
+  "NUMEXPR_NUM_THREADS": "8",
+  "ram_total_gb": 16.0,
+  "ram_available_gb": 3.848,
+  "rss_gb": 0.228,
+  "rss_peak_gb": 0.231,
+  "mpi_size": 1,
+  "mpi_rank": 0,
+  "petsc_version": [
+    3,
+    23,
+    2
+  ],
+  "default_device": "cpu",
+  "problem_dim": 1,
+  "zone_name": "all",
+  "dt": 0.1,
+  "t_start": 0.0,
+  "t_end": 50.0,
+  "create_new_mesh": true,
+  "create_vtx_files": false,
+  "jit_flags": {
+    "cffi_extra_compile_args": [
+      "-O3",
+      "-march=native"
+    ]
+  },
+  "elements_in_dto": 500,
+  "mesh_time_s": 0.028581000020494685,
+  "solve_time_s": 0.5791058749891818,
+  "total_script_time_s": 7.805062916013412,
+  "model_execution_time_s": 0.575849,
+  "cpu_monitor": {
+    "per_rank": [
+      {
+        "avg_cpu_pct": 95.8,
+        "max_cpu_pct": 103.0,
+        "avg_threads": 5,
+        "est_cores_used": 0.96
+      }
+    ],
+    "total_est_cores_used": 0.96
+  }
+}

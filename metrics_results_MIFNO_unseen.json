@@ -1,0 +1,11 @@
+{
+    "split": "unseen_test",
+    "device": "cpu",
+    "num_samples": 16,
+    "inference_time_total_s": 0.650568962097168,
+    "inference_time_per_sample_s": 0.040660560131073,
+    "l2_temp": 0.028190951565966006,
+    "l2_stress": 0.0580670326022609,
+    "l2_temp_percent": 2.8190951565966005,
+    "l2_stress_percent": 5.80670326022609
+}

@@ -1030,7 +1030,7 @@ class ThermoViscoProblem:
         for _ in range(self.n_steps):
             self.t += self.dt
             self.solve_timestep(t=self.t)
-            self._to_np_arrays(t=self.t)
+            #self._to_np_arrays(t=self.t)
 
             # Check if the current time is in the save_times
             if any(abs(self.t - save_time) < 1e-6 for save_time in save_times):
@@ -1046,7 +1046,7 @@ class ThermoViscoProblem:
             self.all_temperatures.extend(current_temperature.flatten().tolist())
             self.all_stresses.extend(current_stress.flatten().tolist())
 
-            print(f"Time {self.t}: {current_temperature}")
+            #print(f"Time {self.t}: {current_temperature}")
 
         # Convert the list to a NumPy array and reshape to a single column
         all_temperatures_array = np.array(self.all_temperatures).reshape(-1, 1)
