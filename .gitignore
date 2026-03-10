@@ -176,3 +176,11 @@ cython_debug/
 **/*.bp
 results/
 output/
+
+# model artifacts
+MIFNO/*.pt
+MIONET/*.pt
+MLP/*.eqx
+*.pt
+*.pth
+*.eqx
