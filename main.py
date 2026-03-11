@@ -13,7 +13,7 @@ from pathlib import Path
 
 def main():
     # ----------------------------
-    # 1) Logging (keep)
+    # 1) Logging
     # ----------------------------
     logger = logging.getLogger(__name__)
     logger.setLevel("DEBUG")
@@ -37,78 +37,65 @@ def main():
         logger.addHandler(file_handler)
 
     # ----------------------------
-    # 2) JIT options (keep)
+    # 2) JIT options
     # ----------------------------
     jit_options = {"cffi_extra_compile_args": ["-O3", "-march=native"]}
 
     # ----------------------------
-    # 3) User controls (edit here)
+    # 3) User controls
     # ----------------------------
     BASE_DIR = Path(__file__).resolve().parent
-    mesh_dir = BASE_DIR/"mesh"
+    mesh_dir = BASE_DIR / "mesh"
     mesh_dir.mkdir(parents=True, exist_ok=True)
 
-    mesh_path = mesh_dir/"glass_1d.msh"   # output filename
+    mesh_path = mesh_dir / "glass_1d.msh"
     mesh_path = str(mesh_path)
-    
+
     problem_dim = 1
 
-    time = (0.0, 500.0)   # (t_start, t_end)
-    n_steps = 5000
+    time = (0.0, 350.0)
     dt = 0.1
+    n_steps = int((time[1] - time[0]) / dt)
 
-    # thickness and nodes used 
-    THICKNESS_MM = 1000
+    # thickness and nodes used
+    THICKNESS_MM = 6.0
     N_THICKNESS_NODES = 20
-    # If you later go 2D:
-    N_LENGTH_NODES = 10          # nodes along length (y) (example)
-    LENGTH_M = 1.0               # length in meters
+
+    # optional geometry values for future 2D
+    N_LENGTH_NODES = 10
+    LENGTH_M = 1.0
 
     # ----------------------------
-    # 4) Zone table: edit here (single source of truth)
+    # 4) Zone table
     # ----------------------------
     ZONES = [
-        dict(name="A",  t0=0.0,   t1=150,  htc=280.0,  T_amb=810.0),
-        dict(name="B1", t0=150,  t1=360,  htc=100.0,  T_amb=760.0),
-        dict(name="B2", t0=360,  t1=480, htc=200.0,  T_amb=660.0),
-        dict(name="C",  t0=109.0,   t1=355.0,  htc=200.0,  T_amb=396.0),
-        dict(name="D", t0=355.0,  t1=370.0,  htc=250.0,  T_amb=396.0),
+        dict(name="A1", t0=0.0,    t1=54.7,   htc=20.0, T_amb=845.0),
+        dict(name="A2", t0=54.7,   t1=109.6,  htc=20.0, T_amb=818.0),
+        dict(name="B1", t0=109.6,  t1=182.6,  htc=20.0, T_amb=790.0),
+        dict(name="B2", t0=182.6,  t1=255.57, htc=20.0, T_amb=763.0),
+        dict(name="C1", t0=255.57, t1=328.5,  htc=20.0, T_amb=741.0),
     ]
 
     # ----------------------------
-    # 5) FEM element config (edit if needed)
+    # 5) FEM element config
     # ----------------------------
     config = {
         "T":     {"element": "CG", "degree": 1},
         "U":     {"element": "CG", "degree": 1},
         "sigma": {"element": "CG", "degree": 1},
-
     }
 
     # ----------------------------
-    # 6) Model parameters (your real values)
+    # 6) Model parameters
     # ----------------------------
     model_params = {
-        # Volumetric heat dissipation
         "f": 0.0,
-        # Radiative heat emissivity
         "epsilon": 0.87,
-        # Boltzmann constant
         "sigma": 5.670e-8,
-        # velocity
         "velocity": 0.24,
-        # Ambient temperature
-        #"T_ambient": 293.15,
-        # Initial temperature
         "T_0": 873.0,
-        "alpha": 15.0,    #ideal for 1d 2, for 2d 0.2
-        # Convective heat transfer coefficient (Controlling cooling rate)
-        #"htc": 280.0,
-        # Material density
+        "alpha": 15.0,
         "rho": 2500.0,
-        # Specific heat capacity
-        #"cp": 1433.0,
-        # Heat conduction coefficient
         "k": 0.80,
         "Hv": 457.05e3,
         "H": 627.8e3,
@@ -119,24 +106,26 @@ def main():
         "Tf_init": 873.0,
         "lambda_": 1.25,
         "mu": 1.0,
-        "Young's_modulus": 70.0e6, # from GP into MPa
+        "Young's_modulus": 70.0e6,
         "Possion_ratio": 0.22,
     }
+
     # ----------------------------
-    # 7) analytical parameters 
+    # 7) Analytical parameters
     # ----------------------------
     analytical_consts = {
-            "a":    0.2957,
-            "c":    1.676e3,
-            "Tb":   779.9,
-            "E0":   70e9,
-            "b":    6.937,
-            "H":    22.380e3,
-            "k":    -1.231e8,
-            "lambda_":   0.7012,
+        "a": 0.2957,
+        "c": 1.676e3,
+        "Tb": 779.9,
+        "E0": 70e9,
+        "b": 6.937,
+        "H": 22.380e3,
+        "k": -1.231e8,
+        "lambda_": 0.7012,
     }
+
     # ----------------------------
-    # 8) Helpers for zone controls (YOU SAID YOU WANT TO KEEP THESE)
+    # 8) Helpers for zone controls
     # ----------------------------
     def lookup_zone_value(t: float, key: str, default=None):
         for z in ZONES:
@@ -153,7 +142,6 @@ def main():
         return ZONES[-1]["name"] if ZONES else "NA"
 
     def update_zone_controls(model: ThermoViscoProblem, t: float):
-        # Ambient temperature Function used in your weak form
         Tamb = float(lookup_zone_value(t, "T_amb", default=model_params["T_0"]))
 
         def T_ambient_expr(x):
@@ -161,7 +149,6 @@ def main():
 
         model.functions["T_ambient"].interpolate(T_ambient_expr)
 
-        # HTC update must be USED in weak form: htc = self.functions["htc"]
         htc_val = float(lookup_zone_value(t, "htc", default=0.0))
 
         def htc_expr(x):
@@ -172,34 +159,91 @@ def main():
         return Tamb, htc_val
 
     def patch_model_zone_functions(model: ThermoViscoProblem):
-        # patch methods (so your existing code can call them if needed)
-        model.T_ambient_zone = lambda t: float(lookup_zone_value(t, "T_amb", default=model_params["T_0"]))
-        model.htc_zone = lambda t: float(lookup_zone_value(t, "htc", default=0.0))
+        model.T_ambient_zone = lambda t: float(
+            lookup_zone_value(t, "T_amb", default=model_params["T_0"])
+        )
+        model.htc_zone = lambda t: float(
+            lookup_zone_value(t, "htc", default=0.0)
+        )
 
-        # wrap solve_timestep to enforce zone updates before solve
         original_solve_timestep = model.solve_timestep
 
         def solve_timestep_wrapped(t: float):
             Tamb, htc_val = update_zone_controls(model, t)
 
-            # print/log zone entry once
             name = current_zone_name(t)
             if not hasattr(model, "_last_zone_printed"):
                 model._last_zone_printed = None
 
             if model._last_zone_printed != name and model.mesh.comm.rank == 0:
-                logger.info(f"[ZONE] Enter {name:>3s} at t={t:8.2f}s | T_amb={Tamb:8.2f}K | htc={htc_val:8.2f}")
+                logger.info(
+                    f"[ZONE] Enter {name:>3s} at t={t:8.2f}s | "
+                    f"T_amb={Tamb:8.2f}K | htc={htc_val:8.2f}"
+                )
 
             model._last_zone_printed = name
             return original_solve_timestep(t)
 
         model.solve_timestep = solve_timestep_wrapped
 
-        # give ThermoViscoProblem the zone list for summary printing
-        model.set_zones_from_main(ZONES)
+        if hasattr(model, "set_zones_from_main"):
+            model.set_zones_from_main(ZONES)
 
     # ----------------------------
-    # 9) Run simulation
+    # 9) Plotting helper functions
+    # ----------------------------
+    def plot_temperature_field_map(model, t_):
+        if not hasattr(model, "temperature_field_history"):
+            logger.warning("temperature_field_history not found in model. Skipping temperature map.")
+            return
+
+        temperature = np.array(model.temperature_field_history).T
+        x_coords = model.mesh.geometry.x[:, 0]
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        im = ax.imshow(
+            temperature,
+            aspect="auto",
+            origin="lower",
+            cmap="RdYlBu_r",
+            extent=[t_[0], t_[-1], x_coords.min(), x_coords.max()]
+        )
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Thickness coordinate x (m)")
+        ax.set_title("Temperature Field T(x,t)")
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label("Temperature (K)")
+        plt.tight_layout()
+        plt.savefig("temperature_field_map.png", dpi=600, bbox_inches="tight")
+        plt.show()
+
+    def plot_stress_field_map(model, t_):
+        if not hasattr(model, "stress_field_history"):
+            logger.warning("stress_field_history not found in model. Skipping stress map.")
+            return
+
+        stress = np.array(model.stress_field_history).T
+        x_coords = model.mesh.geometry.x[:, 0]
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        im = ax.imshow(
+            stress,
+            aspect="auto",
+            origin="lower",
+            cmap="PuOr",
+            extent=[t_[0], t_[-1], x_coords.min(), x_coords.max()]
+        )
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Thickness coordinate x (m)")
+        ax.set_title("Stress Field σ(x,t)")
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label("Stress (MPa)")
+        plt.tight_layout()
+        plt.savefig("stress_field_map.png", dpi=600, bbox_inches="tight")
+        plt.show()
+
+    # ----------------------------
+    # 10) Run simulation
     # ----------------------------
     REGENERATE_MESH = True
     if REGENERATE_MESH:
@@ -211,7 +255,6 @@ def main():
             t_end=0,
             thickness_mm=THICKNESS_MM,
             n_thickness_nodes=N_THICKNESS_NODES,
-            # these are ignored in dim=1 but safe to pass
             length_m=LENGTH_M,
             n_length_nodes=N_LENGTH_NODES,
         )
@@ -219,6 +262,8 @@ def main():
     if not Path(mesh_path).exists():
         raise FileNotFoundError(f"Mesh not found after create_mesh: {mesh_path}")
 
+    model = None
+    dto = None
 
     try:
         model = ThermoViscoProblem(
@@ -247,27 +292,25 @@ def main():
         dto = OutgoingDto()
 
     # ----------------------------
-    # 10) Plotting (keep, with your requested styling)
+    # 11) Plotting
     # ----------------------------
-    if problem_dim == 1 and model.mesh.comm.rank == 0:
-        # time vector for plots: use simulation history length
-        #nT = len(model.avg_T)
-        #t_ = np.linspace(start=time[0] + dt, stop=time[0] + dt * nT, num=nT)
-        t_ = np.linspace(start=0.0, stop=time[1], num=n_steps)
+    if model is not None and problem_dim == 1 and model.mesh.comm.rank == 0:
+        t_ = np.linspace(start=0.0, stop=time[1], num=len(model.avg_T))
+
         plt.rcParams["font.family"] = "Times New Roman"
         plt.rcParams["font.size"] = 15
 
         # Temperature plot
         #plt.figure(dpi=600)
         plt.plot(t_, model.T_0_edge, label="Simulated results at 1st node", color="b")
-        #plt.plot(t_, model.avg_T, label="Simulated results average nodes", color="r")
         plt.xlabel("Time (s)")
         plt.ylabel("Temperatures (K)")
         plt.legend()
         plt.grid(True)
+        plt.tight_layout()
         plt.show()
 
-        # Stress plot (dpi=600, y-limits, styles)
+        # Stress plot
         #plt.figure(dpi=600)
         plt.plot(t_, model.avg_t_sigma_surface, label="Stresses at surface", color="red", linestyle="-")
         plt.plot(t_, model.avg_t_sigma_mid, label="Stresses at center", color="black", linestyle="--")
@@ -276,9 +319,10 @@ def main():
         plt.legend()
         plt.grid(True)
         plt.xlim(0, t_[-1])
+        plt.tight_layout()
         plt.show()
 
-        # Time->distance plots
+        # Time -> distance plots
         v_m_per_s = 9.85 / 60.0
         x_ = v_m_per_s * np.asarray(t_)
         L = 100.0
@@ -290,6 +334,7 @@ def main():
         plt.ylabel("Surface temperature (K)")
         plt.legend()
         plt.grid(True)
+        plt.tight_layout()
         plt.show()
 
         #plt.figure(dpi=600)
@@ -297,15 +342,18 @@ def main():
         plt.plot(x_[mask], np.asarray(model.avg_t_sigma_mid)[mask], label="Center stress", color="black", linestyle="--")
         plt.xlabel("Lehr distance x (m)")
         plt.ylabel("Stress (MPa)")
-        #plt.ylim(-20, 10)
         plt.legend()
         plt.grid(True)
+        plt.tight_layout()
         plt.show()
+
+        # NEW: field maps
+        plot_temperature_field_map(model, t_)
+        plot_stress_field_map(model, t_)
 
 
 if __name__ == "__main__":
     main()
-
 
 '''
 #plt.subplot(2, 3, 1)

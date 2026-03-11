@@ -856,6 +856,9 @@ class ThermoViscoProblem:
         self.avg_thermal_epsilon.append([np.average(self.functions["thermal_strain"].x.array[:])])
         self.avg_t_epsilon.append([np.average(self.functions["volumetric_strain"].x.array[:])])
         self.avg_t_sigma.append([np.average(self.functions_next["sigma"].x.array[:])])
+        self.temperature_field_history.append(self.functions_current["T"].x.array[:].copy())
+        self.stress_field_history.append(self.functions_next["sigma"].x.array[:].copy())
+        self.position_history.append(self.mesh.geometry.x[:, 0].copy())
         
         #self._append_outgoing_dto()
         
@@ -1214,6 +1217,9 @@ class ThermoViscoProblem:
         self.avg_t_sigma_mid= []
         self.avg_t_sigma_surface= []
         self.temperature_time_array = []
+        self.temperature_field_history = []
+        self.stress_field_history = []
+        self.position_history = []
         save_times = [0.1, 10, 20, 50]
         self.stress_data = {time: None for time in save_times}
         if self.mesh.comm.rank == 0:
@@ -1268,6 +1274,10 @@ class ThermoViscoProblem:
         #if self.mesh.comm.rank == 0:
         #    self._print_zone_summary_end()
         self._print_zone_summary_end()
+        
+        self.temperature_field_history = np.array(self.temperature_field_history)  # shape: (nt, nx)
+        self.stress_field_history = np.array(self.stress_field_history)            # shape: (nt, nx) or flattened tensor form
+        self.position_history = np.array(self.position_history) 
         return self.outgoing_dto
 
 
