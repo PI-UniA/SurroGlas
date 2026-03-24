@@ -5,9 +5,7 @@ from dolfinx import cpp as _cpp
 from dolfinx.cpp.graph import AdjacencyList_int32
 from dolfinx.mesh import Mesh
 
-from dolfinx.io import gmshio
-from mpi4py import MPI
-import gmsh
+from dolfinx.io import gmsh as gmshio
 import numpy as np
 
 

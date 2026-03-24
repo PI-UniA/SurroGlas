@@ -2,7 +2,7 @@ from dolfinx.mesh import locate_entities_boundary, meshtags
 from mpi4py import MPI
 from dolfinx import fem, io
 from dolfinx.nls import petsc
-from dolfinx.io import gmshio
+from dolfinx.io import gmsh as gmshio
 from dolfinx.geometry import BoundingBoxTree, compute_closest_entity
 from dolfinx.fem import (FunctionSpace, Function, Constant, locate_dofs_geometrical, locate_dofs_topological)
 from dolfinx.fem.petsc import NonlinearProblem, apply_lifting, assemble_matrix, assemble_vector, set_bc
@@ -25,6 +25,8 @@ import ufl
 from ufl import (inner, tr, sym, Identity)
 from OutgoingDto import OutgoingDto,Elements
 import logging
+from dolfinx.fem.petsc import NewtonSolverNonlinearProblem
+from dolfinx.nls.petsc import NewtonSolver
 #from geometry import read_from_msh
 
 #gmshio.read_from_msh = read_from_msh
@@ -35,8 +37,22 @@ class ThermoViscoProblem:
                  dt: float, config: dict, model_parameters: dict,analy_parameters:dict,
                  jit_options: (dict|None) = None, zones: list[dict] | None = None) -> None:
         self.dim = problem_dim
-        self.mesh, self.cell_tags, self.facet_tags = gmshio.read_from_msh(
-            mesh_path, MPI.COMM_WORLD, 0, gdim=problem_dim)
+        mesh_data = gmshio.read_from_msh(
+            mesh_path, MPI.COMM_WORLD, 0, gdim=problem_dim
+        )
+
+        if hasattr(mesh_data, "mesh"):
+            self.mesh = mesh_data.mesh
+            self.cell_tags = mesh_data.cell_tags
+            self.facet_tags = mesh_data.facet_tags
+            self.ridge_tags = getattr(mesh_data, "ridge_tags", None)
+            self.peak_tags = getattr(mesh_data, "peak_tags", None)
+            self.physical_groups = getattr(mesh_data, "physical_groups", None)
+        else:
+            self.mesh, self.cell_tags, self.facet_tags = mesh_data
+            self.ridge_tags = None
+            self.peak_tags = None
+            self.physical_groups = None
         self.__init_boundary_markers()
         self.dt = dt
         # The time domain
@@ -574,11 +590,18 @@ class ThermoViscoProblem:
 
         return
     
-    def _setup_solver_T(self) -> None:
-        self.prob = NonlinearProblem(F=self.F,u=self.functions_current["T"],
-                                               jit_options=self.jit_options)
+        
 
-        self.solver = petsc.NewtonSolver(self.mesh.comm, self.prob)
+
+    def _setup_solver_T(self) -> None:
+        self.prob = NewtonSolverNonlinearProblem(
+            F=self.F,
+            u=self.functions_current["T"],
+            #J=self.J,  # if you have already defined self.J
+            jit_options=self.jit_options
+        )
+
+        self.solver = NewtonSolver(self.mesh.comm, self.prob)
         self.solver.convergence_criterion = "incremental"
         self.solver.rtol = 1e-12
         self.solver.report = True
@@ -586,25 +609,33 @@ class ThermoViscoProblem:
         self.ksp = self.solver.krylov_solver
         opts = PETSc.Options()
         option_prefix = self.ksp.getOptionsPrefix()
-        # Linear system produced by heat equation is SPD, thus we can use CG
         opts[f"{option_prefix}ksp_type"] = "cg"
         opts[f"{option_prefix}pc_type"] = "gamg"
-        opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
         self.ksp.setFromOptions()
         
-    
     # linear elasticity equation #
     def _set_dirichlet_bc_mech(self) -> None:
           
         facet_dim = self.mesh.topology.dim-1
-        
+                
         if self.dim == 1:
-            left_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["left"])
-            right_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["right"])       
-            self.bc = [ 
-                        fem.dirichletbc(ScalarType([0.0]), left_bc, self.functionSpaces["U"]),
-                        fem.dirichletbc(ScalarType([0.0]), right_bc, self.functionSpaces["U"]),
-                    ]
+            left_bc = locate_dofs_topological(
+                V=self.functionSpaces["U"],
+                entity_dim=facet_dim,
+                entities=self.bc_markers["left"]
+            )
+            right_bc = locate_dofs_topological(
+                V=self.functionSpaces["U"],
+                entity_dim=facet_dim,
+                entities=self.bc_markers["right"]
+            )
+
+            zero = fem.Constant(self.mesh, ScalarType(0.0))
+
+            self.bc = [
+                fem.dirichletbc(zero, left_bc, self.functionSpaces["U"]),
+                fem.dirichletbc(zero, right_bc, self.functionSpaces["U"]),
+            ]
             
         elif self.dim == 2:
             left_bc = locate_dofs_topological(V=self.functionSpaces["U"], entity_dim=facet_dim, entities=self.bc_markers["left"])
@@ -667,7 +698,18 @@ class ThermoViscoProblem:
 
     def _setup_solver_u(self) -> None:
     
-        self.u_problem = fem.petsc.LinearProblem(self.a, self.L, u=self.functions["U"], bcs=self.bc, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+        self.u_problem = fem.petsc.LinearProblem(
+            self.a,
+            self.L,
+            u=self.functions["U"],
+            bcs=self.bc,
+            petsc_options_prefix="mech_U_",
+            petsc_options={
+                "ksp_type": "preonly",
+                "pc_type": "lu",
+                "pc_factor_mat_solver_type": "mumps"
+            }
+        )
        
         return
     def _update_values(self,current: Function,previous: Function) -> None:
@@ -955,7 +997,7 @@ class ThermoViscoProblem:
         Solve the heat equation for each time step.
         Update values and write current values to file.
         """
-        _, converged = self.solver.solve(self.functions_current["T"])
+        n, converged = self.solver.solve(self.functions_current["T"])
         assert(converged)
         self._update_values(current=self.functions_current["T"],previous=self.functions_previous["T"])
         return
