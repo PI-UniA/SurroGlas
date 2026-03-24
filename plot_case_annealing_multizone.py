@@ -154,23 +154,34 @@ def add_zone_lines_time(ax):
 def add_zone_lines_distance(ax):
     x_max = velocity_m_per_s * t_end
 
-    for i, (zone, x_end) in enumerate(ZONE_DISTANCE_MARKERS.items()):
-        if x_end <= x_max:
-            ax.axvline(x_end, linestyle="--", linewidth=1, color="gray")
+    # Build visible zone intervals in distance
+    visible_zones = []
+    for zone, (t0, t1) in ZONE_TIME_WINDOWS.items():
+        x0 = velocity_m_per_s * t0
+        x1 = velocity_m_per_s * t1
 
-            # small alternating offset
-            y_offset = 1.01 + (0.02 if i % 2 == 0 else 0.0)
+        if x0 < x_max:
+            visible_zones.append((zone, x0, min(x1, x_max)))
 
-            ax.text(
-                x_end,
-                y_offset,
-                zone,
-                transform=ax.get_xaxis_transform(),
-                ha="center",
-                va="bottom",
-                rotation=90,
-                fontsize=9
-            )
+    # Draw boundary lines at zone ends
+    for zone, x0, x1 in visible_zones:
+        if x1 <= x_max:
+            ax.axvline(x1, linestyle="--", linewidth=1, color="gray")
+
+    # Put zone names at the center of each zone
+    for i, (zone, x0, x1) in enumerate(visible_zones):
+        x_center = 0.5 * (x0 + x1)
+        y_offset = 1.01
+
+        ax.text(
+            x_center,
+            y_offset,
+            zone,
+            transform=ax.get_xaxis_transform(),
+            ha="center",
+            va="bottom",
+            fontsize=10
+        )
 
 
 # ============================================================
@@ -188,7 +199,7 @@ def plot_temperature_map(temperature: np.ndarray, which: str, case_idx: int, tag
     )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Space index")
-    ax.set_title(f"FEM Temperature Field ({which}, case {case_idx})")
+    ax.set_title(f"FEM Temperature Field ({which}, case {case_idx})", pad=20)
     cbar = fig.colorbar(im, ax=ax)
     cbar.set_label("Temperature (K)")
     add_zone_lines_time(ax)
@@ -211,7 +222,7 @@ def plot_stress_map(stress: np.ndarray, which: str, case_idx: int, tag: str, nx_
     )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Space index")
-    ax.set_title(f"FEM Stress Field ({which}, case {case_idx})")
+    ax.set_title(f"FEM Stress Field ({which}, case {case_idx})", pad=20)
     cbar = fig.colorbar(im, ax=ax)
     cbar.set_label("Stress (Pa)")
     add_zone_lines_time(ax)
@@ -236,7 +247,7 @@ def plot_temperature_timeseries(temperature: np.ndarray, which: str, case_idx: i
     plt.plot(t_, temperature[far_idx], label=f"Last node ({far_idx})")
     plt.xlabel("Time (s)")
     plt.ylabel("Temperature (K)")
-    plt.title(f"Temperature evolution ({which}, case {case_idx})")
+    plt.title(f"Temperature evolution ({which}, case {case_idx})", pad=20)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -261,7 +272,7 @@ def plot_stress_timeseries(stress: np.ndarray, which: str, case_idx: int, tag: s
     plt.plot(t_, stress[far_idx], label=f"Last node ({far_idx})")
     plt.xlabel("Time (s)")
     plt.ylabel("Stress (Pa)")
-    plt.title(f"Stress evolution ({which}, case {case_idx})")
+    plt.title(f"Stress evolution ({which}, case {case_idx})", pad=20)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -282,7 +293,7 @@ def plot_surface_temperature_vs_distance(temperature: np.ndarray, which: str, ca
     plt.plot(x_, temperature[surface_idx], label="Surface temperature")
     plt.xlabel("Lehr distance x (m)")
     plt.ylabel("Temperature (K)")
-    plt.title(f"Surface temperature vs distance ({which}, case {case_idx})")
+    plt.title(f"Surface temperature vs distance ({which}, case {case_idx})", pad=20)
     plt.grid(True)
     plt.legend()
     add_zone_lines_distance(plt.gca())
@@ -306,7 +317,7 @@ def plot_surface_stress_vs_distance(stress: np.ndarray, which: str, case_idx: in
     plt.plot(x_, stress[mid_idx], label="Mid-plane stress")
     plt.xlabel("Lehr distance x (m)")
     plt.ylabel("Stress (Pa)")
-    plt.title(f"Stress vs distance ({which}, case {case_idx})")
+    plt.title(f"Stress vs distance ({which}, case {case_idx})", pad=20)
     plt.grid(True)
     plt.legend()
     add_zone_lines_distance(plt.gca())
