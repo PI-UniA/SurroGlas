@@ -1,13 +1,14 @@
 # SurroGlas – AI-driven Surrogate Modeling for Glass Annealing
 
 ## 📌 Introduction
+
 SurroGlas is a research project focused on developing **AI-based surrogate models** for simulating thermo-mechanical processes in glass manufacturing, particularly in **annealing Lehr systems**.
 
 The goal is to replace or accelerate traditional **Finite Element Method (FEM)** simulations using advanced **Neural Operator architectures**, enabling:
 
-- ⚡ Real-time prediction of temperature and stress fields  
-- 🔁 Rapid evaluation of process parameters  
-- 🧠 Data-driven digital twin capabilities for glass production  
+- ⚡ Real-time prediction of temperature and stress fields
+- 🔁 Rapid evaluation of process parameters
+- 🧠 Data-driven digital twin capabilities for glass production
 
 ---
 
@@ -43,14 +44,14 @@ The repository combines:
 
 ## 📊 Key Features
 
-- ✅ Multi-zone annealing Lehr simulation  
-- ✅ Parameterized surrogate modeling  
-- ✅ Temperature & stress prediction  
+- ✅ Multi-zone annealing Lehr simulation
+- ✅ Parameterized surrogate modeling
+- ✅ Temperature & stress prediction
 - ✅ KPI evaluation:
-  - Relative L2 error  
-  - Speed-up vs FEM  
-  - Computation time  
-- ✅ Interactive Streamlit dashboard  
+  - Relative L2 error
+  - Speed-up vs FEM
+  - Computation time
+- ✅ Interactive Streamlit dashboard
 
 ---
 
@@ -59,65 +60,80 @@ The repository combines:
 ### Local (recommended)
 
 ```bash
-pip install -r requirements.txt```
+pip install -r requirements.txt
+```
 
-or using conda
+Or using conda:
 
 ```bash
 conda env create -f environment.yml
 conda activate fenicsx-env
+```
 
 ---
 
-## **▶️ Usage**
+## ▶️ Usage
 
-### 🔹 **1. Run FEM Simulation**
+### 1. Run FEM Simulation
 
 ```bash
 python main.py
+```
 
 Run in parallel:
+
 ```bash
 mpiexec -np N python main.py -parallel
+```
 
-### 2. Train AI models
+### 2. Train AI Models
+
 ```bash
 python train_MIFNO_multizone.py
 python train_MIONET.py
+```
 
-### 3. Run inference
+### 3. Run Inference
+
 ```bash
 python predict_MIFNO_multi-zone.py
 python predict_MIONET.py
+```
 
-### 4. Launch Streamlit dashboard
+### 4. Launch Streamlit Dashboard
+
 ```bash
 streamlit run streamlit_compare.py
+```
 
 The dashboard allows:
-	•	Comparison of FEM vs AI predictions
-	•	Visualization of temperature and stress fields
-	•	KPI analysis (error, speed-up, runtime)
+- Comparison of FEM vs AI predictions
+- Visualization of temperature and stress fields
+- KPI analysis (error, speed-up, runtime)
 
 ---
 
 ## 📈 Example Outputs
 
 The framework generates:
-	•	Temperature field evolution over space and time
-	•	Stress distribution in the glass
-	•	Surface temperature profiles over the annealing lehr (cooling zones)
-	•	Thickness-dependent temperature/stress maps
-	•	Error maps between FEM and AI predictions
-	•	Performance comparison plots
+
+- Temperature field evolution over space and time
+- Stress distribution in the glass
+- Surface temperature profiles over the annealing lehr (cooling zones)
+- Thickness-dependent temperature/stress maps
+- Error maps between FEM and AI predictions
+- Performance comparison plots
+
 ---
+
 ## 🧪 Research Context
 
 This work contributes to:
-  •	Numerical simulations and transient boundary conditions
-	•	AI-based acceleration of numerical simulations
-	•	Neural Operators for solving PDEs
-	•	Data-driven multi-physics modeling
-	•	Digital twins in glass manufacturing
+
+- Numerical simulations and transient boundary conditions
+- AI-based acceleration of numerical simulations
+- Neural Operators for solving PDEs
+- Data-driven multi-physics modeling
+- Digital twins in glass manufacturing
 
 The framework demonstrates how machine learning can approximate complex thermo-mechanical processes while significantly reducing computational cost.
