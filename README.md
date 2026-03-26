@@ -60,12 +60,16 @@ The repository combines:
 
 ```bash
 pip install -r requirements.txt
+
+or using conda
+
+```bash
 conda env create -f environment.yml
 conda activate fenicsx-env
 
 ---
 
-**## ▶️ Usage**
+## **▶️ Usage**
 
 ### 🔹 **1. Run FEM Simulation**
 
