@@ -59,7 +59,7 @@ The repository combines:
 ### Local (recommended)
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt```
 
 or using conda
 
