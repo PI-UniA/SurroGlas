@@ -178,3 +178,41 @@ cython_debug/
 .DS_Store
 Miniconda3-latest-Linux-x86_64.sh
 Miniconda3-latest-Linux-x86_64.sh
+# Python
+__pycache__/
+*.pyc
+
+# Model weights / checkpoints
+*.pt
+*.pth
+*.ckpt
+
+# Arrays / generated data
+*.npy
+*.npz
+
+# Generated plots / images
+plots_case_checks/
+*.png
+*.jpg
+*.jpeg
+
+# Generated metrics / logs / outputs
+metrics_results_*.json
+app.log
+output.txt
+temperature_over_time_0_10.txt
+temperature_time_series.txt
+temperature_field_map.png
+stress_field_map.png
+figure.png
+
+# Results
+results/
+
+# Mesh / temp files if generated
+mesh1d.msh
+mesh2d.msh
+output/
+MIFNO/
+MIONET/
