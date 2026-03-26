@@ -65,9 +65,9 @@ conda activate fenicsx-env
 
 ---
 
-## ▶️ Usage
+## ▶️ **Usage**
 
-### 1. Run FEM simulation
+### 🔹 **1. Run FEM Simulation**
 
 ```bash
 python main.py
