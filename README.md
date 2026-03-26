@@ -73,22 +73,22 @@ conda activate fenicsx-env
 python main.py
 
 Run in parallel:
+```bash
 mpiexec -np N python main.py -parallel
 
 ### 2. Train AI models
-
+```bash
 python train_MIFNO_multizone.py
 python train_MIONET.py
 
 ### 3. Run inference
-
+```bash
 python predict_MIFNO_multi-zone.py
 python predict_MIONET.py
 
 ### 4. Launch Streamlit dashboard
-
+```bash
 streamlit run streamlit_compare.py
-
 
 The dashboard allows:
 	•	Comparison of FEM vs AI predictions
