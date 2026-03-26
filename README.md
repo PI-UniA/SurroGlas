@@ -1,66 +1,146 @@
-# SurroGlas
+# SurroGlas – AI-driven Surrogate Modeling for Glass Annealing
 
-## Introduction
+## 📌 Introduction
+SurroGlas is a research project focused on developing **AI-based surrogate models** for simulating thermo-mechanical processes in glass manufacturing, particularly in **annealing Lehr systems**.
 
-This is the working repository for the publicly funded research project "SurroGlas".
-It contains the necessary files to run the Finite Element simulation that models float glass tempering.
+The goal is to replace or accelerate traditional **Finite Element Method (FEM)** simulations using advanced **Neural Operator architectures**, enabling:
 
-## Structure
+- ⚡ Real-time prediction of temperature and stress fields  
+- 🔁 Rapid evaluation of process parameters  
+- 🧠 Data-driven digital twin capabilities for glass production  
 
-### `main.py`
+---
 
-At the top level, inputs are given in `main.py`.
-From there, you can configure various aspects of the model, such as:
+## 🧠 Core Concept
 
-- the problem dimension using `problem_dim`,
-- the solution method (Continuous or Discontinuous Galerkin) and order using `fe_config` and
-- model parameters using the `model_params` dict.
+The repository combines:
 
-### `ThermoViscoProblem`
+- **FEM simulation (ground truth generation)**
+- **AI surrogate models (MIFNO, MIONet)**
+- **Interactive visualization (Streamlit dashboard)**
 
-This class holds the top-level data structure that includes the sub-models, as well as all data structures relevant for Finite Element analysis.
+---
 
-### `ThermalModel`
+## 🏗️ Repository Structure (suggested)
+SurroGlas/
+│
+├── fem/                     # FEM simulation (physics-based)
+│   ├── ThermoViscoProblem.py
+│   ├── ThermalModel.py
+│   ├── ViscoelasticModel.py
+│   └── geometry.py
+│
+├── training/                # Model training scripts
+│   ├── train_MIFNO_multizone.py
+│   └── train_MIONET.py
+│
+├── inference/               # Prediction scripts
+│   ├── predict_MIFNO_multi-zone.py
+│   └── predict_MIONET.py
+│
+├── apps/                    # User interface / visualization
+│   └── streamlit_compare.py
+│
+├── utils/                   # Metrics and plotting utilities
+│
+├── data/                    # (ignored) generated datasets
+├── results/                 # (ignored) simulation outputs
+│
+├── requirements.txt
+├── environment.yml
+└── README.md
 
-Here, all parameters are stored that are required to solve the heat equation.
+---
 
-### `ViscoelasticModel`
+## ⚙️ Models Implemented
 
-This class holds the necessary parameters, expressions and functions that are required to compute derived quantities in the viscoelastic material model, i.e. fictive temperature, shift function, scaled time and the various strain and stress increments.
+### 🔹 FEM (Baseline)
+- High-fidelity thermo-viscoelastic simulation
+- Used for dataset generation and validation
 
-## Installation
+### 🔹 MIFNO (Multi-Input Fourier Neural Operator)
+- Learns full temperature & stress fields
+- Handles varying process parameters:
+  - Heat transfer coefficient (HTC)
+  - Emissivity
+  - Ambient temperature
+  - Initial temperature
 
-### Local
+### 🔹 MIONet
+- Alternative neural operator architecture
+- Efficient multi-input mapping
 
-To install all required packages locally, a working Python installation is required.
-In a corresponding environment, run within a shell:
+---
+
+## 📊 Key Features
+
+- ✅ Multi-zone annealing Lehr simulation  
+- ✅ Parameterized surrogate modeling  
+- ✅ Temperature & stress prediction  
+- ✅ KPI evaluation:
+  - Relative L2 error  
+  - Speed-up vs FEM  
+  - Computation time  
+- ✅ Interactive Streamlit dashboard  
+
+---
+
+## 🚀 Installation
+
+### Local (recommended)
 
 ```bash
-pip3 install -r requirements.txt
-```
+pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate fenicsx-env
 
-### Docker
+## ▶️ Usage
 
-You might also want to use the pre-built docker container `dolfinx/dolfinx:v0.7.3` that the FEniCS project provides.
-To execute the scripts in the container, clone the git repo and run the following command in a shell:
-
-```bash
-docker run -ti -v $(pwd):/root dolfinx/dolfinx:v0.7.3
-```
-
-This mounts the repository in the root folder of the container, in which a terminal session is opened.
-
-## Running
-
-From within the local Python environment where the required Python packages are installed, execute
+### 1. Run FEM simulation
 
 ```bash
-python3 main.py
-```
-to run in serial.
+python main.py
 
-For larger models, if you wish to simulate in parallel using `N` cores, execute
+Run in parallel:
+mpiexec -np N python main.py -parallel
 
-```bash
-mpiexec -np N python3 main.py -parallel
-````
+### 2. Train AI models
+
+python train_MIFNO_multizone.py
+python train_MIONET.py
+
+### 3. Run inference
+
+python predict_MIFNO_multi-zone.py
+python predict_MIONET.py
+
+### 4. Launch Streamlit dashboard
+
+streamlit run streamlit_compare.py
+
+
+The dashboard allows:
+	•	Comparison of FEM vs AI predictions
+	•	Visualization of temperature and stress fields
+	•	KPI analysis (error, speed-up, runtime)
+
+## 📈 Example Outputs
+
+The framework generates:
+	•	Temperature field evolution over space and time
+	•	Stress distribution in the glass
+	•	Surface temperature profiles over the annealing lehr (cooling zones)
+	•	Thickness-dependent temperature/stress maps
+	•	Error maps between FEM and AI predictions
+	•	Performance comparison plots
+
+## 🧪 Research Context
+
+This work contributes to:
+  •	Numerical simulations and transient boundary conditions
+	•	AI-based acceleration of numerical simulations
+	•	Neural Operators for solving PDEs
+	•	Data-driven multi-physics modeling
+	•	Digital twins in glass manufacturing
+
+The framework demonstrates how machine learning can approximate complex thermo-mechanical processes while significantly reducing computational cost.
