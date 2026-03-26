@@ -21,37 +21,6 @@ The repository combines:
 
 ---
 
-## 🏗️ Repository Structure (suggested)
-SurroGlas/
-│
-├── fem/                     # FEM simulation (physics-based)
-│   ├── ThermoViscoProblem.py
-│   ├── ThermalModel.py
-│   ├── ViscoelasticModel.py
-│   └── geometry.py
-│
-├── training/                # Model training scripts
-│   ├── train_MIFNO_multizone.py
-│   └── train_MIONET.py
-│
-├── inference/               # Prediction scripts
-│   ├── predict_MIFNO_multi-zone.py
-│   └── predict_MIONET.py
-│
-├── apps/                    # User interface / visualization
-│   └── streamlit_compare.py
-│
-├── utils/                   # Metrics and plotting utilities
-│
-├── data/                    # (ignored) generated datasets
-├── results/                 # (ignored) simulation outputs
-│
-├── requirements.txt
-├── environment.yml
-└── README.md
-
----
-
 ## ⚙️ Models Implemented
 
 ### 🔹 FEM (Baseline)
@@ -94,6 +63,8 @@ pip install -r requirements.txt
 conda env create -f environment.yml
 conda activate fenicsx-env
 
+---
+
 ## ▶️ Usage
 
 ### 1. Run FEM simulation
@@ -124,6 +95,8 @@ The dashboard allows:
 	•	Visualization of temperature and stress fields
 	•	KPI analysis (error, speed-up, runtime)
 
+---
+
 ## 📈 Example Outputs
 
 The framework generates:
@@ -133,7 +106,7 @@ The framework generates:
 	•	Thickness-dependent temperature/stress maps
 	•	Error maps between FEM and AI predictions
 	•	Performance comparison plots
-
+---
 ## 🧪 Research Context
 
 This work contributes to:
