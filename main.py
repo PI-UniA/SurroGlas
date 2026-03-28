@@ -9,8 +9,8 @@ import itertools
 import numpy as np
 import pandas as pd
 
-from geometry import create_mesh
-from ThermoViscoProblem import ThermoViscoProblem
+from fem.geometry import create_mesh
+from fem.ThermoViscoProblem import ThermoViscoProblem
 from OutgoingDto import OutgoingDto
 
 logging.basicConfig(level=logging.INFO)

@@ -15,8 +15,8 @@ import numpy as np
 from basix.ufl import element
 from math import ceil
 from time import time
-from ViscoelasticModel import ViscoelasticModel
-from ThermalModel import ThermalModel
+from fem.ViscoelasticModel import ViscoelasticModel
+from fem.ThermalModel import ThermalModel
 from dolfinx import default_scalar_type
 from dolfinx.fem import Constant, Expression
 from ufl import conditional, ge, lt

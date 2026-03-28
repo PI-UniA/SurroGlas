@@ -1,5 +1,4 @@
 # compare_fem_mifno_mionet.py
-
 import os
 import re
 import json
@@ -623,7 +622,7 @@ print(f"✅ Saved: {out7}")
 # ============================================================
 # Combined summary block charts
 # ============================================================
-fem_time_per_sample = 0.69
+fem_time_per_sample = 30.5
 mifno_time_per_sample = mifno_time / N
 mionet_time_per_sample = mionet_time / N
 

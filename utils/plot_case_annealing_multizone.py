@@ -70,9 +70,9 @@ target_params = {
 
 def load_params_csv(which: str):
     if which == "train":
-        return "parameter_combinations_train.csv", os.path.join("results", "train")
+        return "data/parameter_combinations_train.csv", os.path.join("results", "train")
     elif which == "test_unseen":
-        return "parameter_combinations_test_unseen.csv", os.path.join("results", "test_unseen")
+        return "data/parameter_combinations_test_unseen.csv", os.path.join("results", "test_unseen")
     else:
         raise ValueError('split must be "train" or "test_unseen"')
 

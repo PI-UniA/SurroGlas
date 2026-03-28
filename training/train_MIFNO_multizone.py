@@ -1,5 +1,4 @@
 # train_MIFNO.py
-
 import os
 import re
 import json
@@ -81,7 +80,7 @@ if device.type == "cuda":
     print(f"   CUDA device: {torch.cuda.get_device_name(0)}")
     torch.backends.cudnn.benchmark = True
 elif device.type == "mps":
-    print("   Using Apple MPS backend")
+    print("Using Apple MPS backend")
 
 
 # ============================================================

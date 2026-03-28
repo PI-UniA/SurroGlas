@@ -9,7 +9,7 @@ from math import factorial
 from ufl import (TestFunction,TrialFunction, grad, inner,
                  CellDiameter, avg, jump,
                  Measure, SpatialCoordinate, FacetNormal,inner, tr, sym, Identity,dot, nabla_div, ds, dx)#, ds, dx
-from AnalyticalSoln import AnalyticalSoln
+from fem.AnalyticalSoln import AnalyticalSoln
 from dolfinx.fem import (Constant,Function, FunctionSpace, assemble, Expression, assemble_scalar, assemble_matrix, assemble_vector)
 from dolfinx.mesh import create_unit_square
 from mpi4py import MPI
