@@ -89,21 +89,21 @@ mpiexec -np N python main.py -parallel
 ### 2. Train AI Models
 
 ```bash
-python train_MIFNO_multizone.py
-python train_MIONET.py
+python training/train_MIFNO_multizone.py
+python training/train_MIONET.py
 ```
 
 ### 3. Run Inference
 
 ```bash
-python predict_MIFNO_multi-zone.py
-python predict_MIONET.py
+python inference/predict_MIFNO_multi-zone.py
+python inference/predict_MIONET.py
 ```
 
 ### 4. Launch Streamlit Dashboard
 
 ```bash
-streamlit run streamlit_compare.py
+streamlit run apps/streamlit_compare.py
 ```
 
 The dashboard allows:
