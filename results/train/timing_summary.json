@@ -1,7 +1,0 @@
-{
-    "n_cases": 64,
-    "solve_time_mean_s": 30.394372300128452,
-    "solve_time_median_s": 30.402084363158792,
-    "solve_time_min_s": 28.203201909083873,
-    "solve_time_max_s": 31.424998922273517
-}
