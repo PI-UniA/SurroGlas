@@ -597,10 +597,7 @@ else:
     temp_l2_mionet = rel_l2(Y_pred_temp_mionet, Y_temp)
     stress_l2_mionet = rel_l2(Y_pred_stress_mionet, Y_stress)
 
-if timing_summary is not None:
-    fem_time_per_sample = float(timing_summary.get("solve_time_mean_s", 0.69))
-else:
-    fem_time_per_sample = 0.69
+fem_time_per_sample = float(timing_summary.get("solve_time_mean_s", 30.5))
 
 mifno_time_per_sample = mifno_time / max(len(X_mifno), 1)
 mionet_time_per_sample = mionet_time / max(len(X_mionet), 1)
@@ -782,7 +779,7 @@ with right:
 left, right = st.columns(2)
 
 # ============================================================
-# Temperature accuracy
+# Temperature and stress accuracy
 # ============================================================
 with left:
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -809,12 +806,38 @@ with left:
         )
 
     st.pyplot(fig)
+    
+with right:
+    fig, ax = plt.subplots(figsize=(8, 4))
 
+    values = [0.0, stress_l2_mifno * 100, stress_l2_mionet * 100]
+    bars = ax.bar(["FEM", "MIFNO", "MIONet"], values)
 
+    ax.set_title("Stress accuracy", fontsize=14, fontweight="semibold", pad=18)
+    ax.set_ylabel("Relative L2 Error (%)")
+    ax.grid(True, axis="y", linestyle="--", alpha=0.5)
+
+    ymax = max(values)
+    ax.set_ylim(0, ymax * 1.3 if ymax > 0 else 1.0)
+
+    for b, val in zip(bars, values):
+        ax.text(
+            b.get_x() + b.get_width()/2,
+            b.get_height() + 0.05 * ymax,
+            f"{val:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            clip_on=False
+        )
+
+    st.pyplot(fig)
+
+left, right = st.columns(2)
 # ============================================================
 # Computation time
 # ============================================================
-with right:
+with left:
     fig, ax = plt.subplots(figsize=(8, 4))
 
     values = [fem_time_per_sample, mifno_time_per_sample, mionet_time_per_sample]
@@ -844,9 +867,9 @@ with right:
 # ============================================================
 # Speed-up (centered)
 # ============================================================
-col1, col2, col3 = st.columns([1, 2, 1])
+#col1, col2, col3 = st.columns([1, 2, 1])
 
-with col2:
+with right:
     fig, ax = plt.subplots(figsize=(8, 4))
 
     values = [1.0, mifno_speedup, mionet_speedup]
