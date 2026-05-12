@@ -39,8 +39,8 @@ os.makedirs(PLOT_DIR, exist_ok=True)
 # ── Simulation settings — loaded automatically from meta.json ────────────
 # These defaults are overridden by meta.json if it exists.
 t_start      = 0.0
-t_end        = 400.0
-dt           = 0.1
+t_end        = 100.0
+dt           = 0.001
 Nt           = int(round((t_end - t_start) / dt))
 THICKNESS_MM = 4.0
 N_NODES      = 29
