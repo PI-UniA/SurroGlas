@@ -25,10 +25,10 @@ Nt = int((t_end - t_start) / dt)
 
 # Spatial points (must match your saved FEM field shape)
 # Adjust if your saved history length indicates a different value
-Nx = 20
+Nx = 29
 
 # Velocity used to convert time -> Lehr distance
-velocity_m_per_s = 0.24
+velocity_m_per_s = 0.16417
 
 # Zone boundaries in time [s]
 ZONE_TIME_WINDOWS = {
@@ -48,20 +48,20 @@ ZONE_DISTANCE_MARKERS = {
 # Define target multi-zone parameter set
 # ------------------------------------------------------------
 target_params = {
-    "htc_A1": 40.0,
-    "htc_A2": 40.0,
-    "htc_B1": 30.0,
-    "htc_B2": 30.0,
-    "htc_C1": 40.0,
+    "htc_A1": 420.0,
+    "htc_A2": 435.0,
+    "htc_B1": 450.0,
+    "htc_B2": 435.0,
+    "htc_C1": 435.0,
 
-    "T_amb_A1": 868.0,
+    "T_amb_A1": 873.0,
     "T_amb_A2": 846.0,
-    "T_amb_B1": 800.0,
-    "T_amb_B2": 770.0,
-    "T_amb_C1": 740.0,
+    "T_amb_B1": 812.0,
+    "T_amb_B2": 757.0,
+    "T_amb_C1": 748.0,
 
-    "epsilon": 0.80,
-    "sigma": 3.670e-8,
+    "epsilon": 0.775,
+    "sigma": 1.670e-8,
 }
 
 # ============================================================
@@ -70,9 +70,9 @@ target_params = {
 
 def load_params_csv(which: str):
     if which == "train":
-        return "data/parameter_combinations_train.csv", os.path.join("results", "train")
+        return "parameter_combinations_train.csv", os.path.join("results", "train")
     elif which == "test_unseen":
-        return "data/parameter_combinations_test_unseen.csv", os.path.join("results", "test_unseen")
+        return "parameter_combinations_test_unseen.csv", os.path.join("results", "test_unseen")
     else:
         raise ValueError('split must be "train" or "test_unseen"')
 

@@ -68,7 +68,7 @@ ZONES = [
 model_parameters = {
     # --- Boundary condition forcing terms ---
     "f":       0.0,            # volumetric heat source [W/m³]
-    "epsilon": 0.0,            # radiation neglected for thin glass (Aronen 2018 Sec 2)
+    "epsilon": 0.8,            # radiation neglected for thin glass (Aronen 2018 Sec 2)
     "sigma":   5.670e-8,       # Stefan-Boltzmann [W/m²K⁴] (kept for completeness)
 
     # --- Initial / ambient conditions ---

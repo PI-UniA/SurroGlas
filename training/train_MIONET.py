@@ -49,7 +49,7 @@ parser.add_argument("--threads", type=int, default=8)
 parser.add_argument("--results_dir", type=str, default="results/train")
 parser.add_argument("--save_dir", type=str, default="MIONET")
 parser.add_argument("--epochs", type=int, default=800)
-parser.add_argument("--batch_size", type=int, default=8)
+parser.add_argument("--batch_size", type=int, default=4)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--weight_decay", type=float, default=1e-5)
 parser.add_argument("--val_ratio", type=float, default=0.2)
@@ -91,8 +91,23 @@ def extract_case_idx(fname: str) -> int:
 
 
 def infer_shape_from_flat(flat_len: int, n_space_candidates=None):
+    """
+    Read Nx and Nt directly from meta.json saved by main_fem.py.
+    Falls back to candidate guessing only if meta.json is not found.
+    """
+    meta_path = os.path.join(results_dir, "meta.json")
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            meta = json.load(f)
+        nx = int(meta["n_nodes"])   # exact — no guessing
+        nt = int(meta["Nt"])
+        print(f"   Shape from meta.json: Nx={nx}, Nt={nt}")
+        return nt, nx
+
+    # Fallback only if meta.json missing
+    print("   WARNING: meta.json not found — guessing shape from file size")
     if n_space_candidates is None:
-        n_space_candidates = [20, 21, 49, 50, 100, 200, 500]
+        n_space_candidates = [29, 49, 50, 100, 200, 500]  # 29 first
     for nx in n_space_candidates:
         if flat_len % nx == 0:
             nt = flat_len // nx
@@ -100,7 +115,7 @@ def infer_shape_from_flat(flat_len: int, n_space_candidates=None):
     divisors = [d for d in range(2, int(np.sqrt(flat_len)) + 1) if flat_len % d == 0]
     if not divisors:
         raise ValueError(f"Could not infer Nx/Nt from flattened length {flat_len}")
-    nx = min(divisors, key=lambda x: abs(x - 20))
+    nx = min(divisors, key=lambda x: abs(x - 29))
     nt = flat_len // nx
     return nt, nx
 
@@ -146,7 +161,8 @@ if not (len(param_files) == len(temp_files) == len(stress_files) > 0):
     )
 
 first_temp = np.loadtxt(os.path.join(results_dir, temp_files[0]))
-Nt, Nx = infer_shape_from_flat(first_temp.size, n_space_candidates=[20, 21, 49, 50, 100, 200, 500])
+Nt, Nx = infer_shape_from_flat(first_temp.size)
+
 
 X_params = []
 Y_temperatures = []
@@ -403,7 +419,7 @@ def compute_losses(pred, yb):
         gradient_x(yb[:, 1])
     )
 
-    loss = 0.4 * loss_T + 1.2 * loss_S + 0.1 * loss_S_energy + 0.2 * loss_grad_S
+    loss = 0.2 * loss_T + 2.0 * loss_S + 0.2 * loss_S_energy + 0.4 * loss_grad_S
     return loss, loss_T, loss_S, loss_S_energy, loss_grad_S
 
 

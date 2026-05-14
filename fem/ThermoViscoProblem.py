@@ -454,6 +454,8 @@ class ThermoViscoProblem:
         face_terms = (
             h_total * (T - T_ext) * self.v * ds(1)
             + h_total * (T - T_ext) * self.v * ds(2)
+            + eps * sigma_SB * (T - T_ext**4) * self.v * ds(1)
+            + eps * sigma_SB * (T - T_ext**4) * self.v * ds(2)
         )
         edge_terms = ufl.as_ufl(0)
         if self.dim == 2:

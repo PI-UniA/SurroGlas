@@ -39,9 +39,9 @@ def pick_device(req: str) -> torch.device:
 # ============================================================
 parser = argparse.ArgumentParser()
 parser.add_argument("--device", type=str, default="auto")
-parser.add_argument("--split", type=str, default="test_unseen")
+parser.add_argument("--split", type=str, default="train")
 parser.add_argument("--case_id", type=int, default=0)
-parser.add_argument("--t_idx", type=int, default=190)
+parser.add_argument("--t_idx", type=int, default=3299)
 args = parser.parse_args()
 
 device = pick_device(args.device)
@@ -252,7 +252,7 @@ t_idx = min(max(0, args.t_idx), Nt - 1)
 
 # ---- physical axes ----
 dt = 0.1
-velocity_m_per_s = 0.24
+velocity_m_per_s = 0.16417
 
 t_axis = np.arange(Nt) * dt
 x_axis = velocity_m_per_s * t_axis
@@ -386,7 +386,7 @@ plt.figure(figsize=(10, 4))
 plt.imshow(
     Y_temp[case_id],
     aspect="auto",
-    origin="lower",
+    origin="lower", cmap="RdYlBu_r",
     extent=[t_axis[0], t_axis[-1], 0, Nx - 1]
 )
 plt.colorbar(label="Temperature (K)")
@@ -409,6 +409,7 @@ plt.imshow(
     Y_pred_temp[case_id],
     aspect="auto",
     origin="lower",
+    cmap="RdYlBu_r",
     extent=[t_axis[0], t_axis[-1], 0, Nx - 1]
 )
 plt.colorbar(label="Temperature (K)")
@@ -431,6 +432,7 @@ plt.imshow(
     Y_stress[case_id],
     aspect="auto",
     origin="lower",
+    cmap="PuOr",
     extent=[t_axis[0], t_axis[-1], 0, Nx - 1]
 )
 plt.colorbar(label="Stress (Pa)")
@@ -453,6 +455,7 @@ plt.imshow(
     Y_pred_stress[case_id],
     aspect="auto",
     origin="lower",
+    cmap="PuOr",
     extent=[t_axis[0], t_axis[-1], 0, Nx - 1]
 )
 plt.colorbar(label="Stress (Pa)")

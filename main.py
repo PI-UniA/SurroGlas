@@ -28,11 +28,11 @@ create_vtx_files = False
 
 # expected output shape
 # adapt Nx to your real mesh nodes if needed
-Nt = int((time_window[1] - time_window[0]) / dt)
-Nx = 49
+#Nt = int((time_window[1] - time_window[0]) / dt)
+#Nx = 49
 # thickness and nodes used
-THICKNESS_MM = 6.0
-N_THICKNESS_NODES = 20
+THICKNESS_MM = 4.0
+N_THICKNESS_NODES = 29
 
 # optional geometry values for future 2D
 N_LENGTH_NODES = 10
@@ -53,45 +53,44 @@ ZONE_TIME_WINDOWS = {
 }
 
 # ============================================================
-# TRAIN parameter space (corner values)
+# TRAIN parameter space — wider, covers test range too
 # ============================================================
 train_param_space = {
-    "htc_A1":   [20.0, 50.0],
-    "htc_A2":   [20.0, 50.0],
-    "htc_B1":   [20.0, 50.0],
-    "htc_B2":   [20.0, 50.0],
-    "htc_C1":   [20.0, 50.0],
+    "htc_A1":   [420.0, 435.0, 450.0],
+    "htc_A2":   [420.0, 435.0, 450.0],
+    "htc_B1":   [420.0, 435.0, 450.0],
+    "htc_B2":   [420.0, 435.0, 450.0],
+    "htc_C1":   [420.0, 435.0, 450.0],
 
-    "T_amb_A1": [873.0, 853.0],
-    "T_amb_A2": [853.0, 827.0],
-    "T_amb_B1": [827.0, 779.0],
-    "T_amb_B2": [779.0, 757.0],
-    "T_amb_C1": [757.0, 733.0],
+    "T_amb_A1": [873.0, 866.0, 860.0, 853.0],
+    "T_amb_A2": [853.0, 846.0, 838.0, 827.0],
+    "T_amb_B1": [827.0, 812.0, 800.0, 779.0],
+    "T_amb_B2": [779.0, 770.0, 764.0, 757.0],
+    "T_amb_C1": [757.0, 748.0, 740.0, 733.0],
 
-    "epsilon":  [0.70, 0.85],
-    "sigma":    [1.670e-8, 5.670e-8],
+    "epsilon":  [0.70, 0.775, 0.85],
+    "sigma":    [1.670e-8, 3.670e-8, 5.670e-8],
 }
 
 # ============================================================
-# TEST / UNSEEN parameter space (midpoint-like values)
+# TEST / UNSEEN parameter space — midpoints NOT in train
 # ============================================================
 test_param_space = {
-    "htc_A1":   [30.0, 40.0],
-    "htc_A2":   [30.0, 40.0],
-    "htc_B1":   [30.0, 40.0],
-    "htc_B2":   [30.0, 40.0],
-    "htc_C1":   [30.0, 40.0],
+    "htc_A1":   [427.0, 443.0],
+    "htc_A2":   [427.0, 443.0],
+    "htc_B1":   [427.0, 443.0],
+    "htc_B2":   [427.0, 443.0],
+    "htc_C1":   [427.0, 443.0],
 
-    "T_amb_A1": [868.0, 860.0],
-    "T_amb_A2": [846.0, 838.0],
-    "T_amb_B1": [812.0, 800.0],
-    "T_amb_B2": [770.0, 764.0],
-    "T_amb_C1": [748.0, 740.0],
+    "T_amb_A1": [869.5, 856.5],
+    "T_amb_A2": [849.5, 832.5],
+    "T_amb_B1": [819.5, 789.5],
+    "T_amb_B2": [774.5, 760.5],
+    "T_amb_C1": [752.5, 736.5],
 
-    "epsilon":  [0.75, 0.80],
-    "sigma":    [3.670e-8, 4.670e-8],
+    "epsilon":  [0.737, 0.812],
+    "sigma":    [2.670e-8, 4.670e-8],
 }
-
 # ============================================================
 # Fixed thermo-visco material parameters
 # ============================================================
@@ -101,26 +100,26 @@ def build_model_params(row):
         "epsilon": float(row["epsilon"]),
         "sigma": float(row["sigma"]),
         "T_ambient": float(row["T_amb_A1"]),   # initial value; gets updated by zone
-        "T_0": 873.0,
+        "T_0": 923.15,
         "alpha": 10.0,                         # keep fixed unless you want to vary it too
         "htc": float(row["htc_A1"]),           # initial value; gets updated by zone
-        "rho": 2500.0,
+        "rho": 2530.0,
         "cp": 1433.0,
         "k": 1.0,
-        "Hv": 457.05e3,
-        "H": 627.8e3,
+        "Hv": 633527.0,
+        "H": 633527.0,
         "Tb": 869.0,
         "Rg": 8.314,
         "alpha_solid": 9.10e-6,
-        "alpha_liquid": 25.10e-6,
-        "Tf_init": 873.0,
+        "alpha_liquid": 32.10e-6,
+        "Tf_init": 923.15,
         "lambda_": 1.25,
         "mu": 1.0,
         "Young's_modulus": 70.0e6,
         "Possion_ratio": 0.22,
         "beta": 0.5,
         "gamma": 0.5,
-        "velocity": 0.24,                      # fixed, as you requested earlier
+        "velocity": 0.16417,                      # fixed, as you requested earlier
     }
 
 analytical_constants = {
@@ -415,16 +414,20 @@ if __name__ == "__main__":
     # IMPORTANT:
     # Full factorial for 12 parameters can be huge.
     # Here we cap the number of sampled cases.
+    # New full factorial sizes:
+    # Train: 3^5 × 4^5 × 3 × 3 = 243 × 1024 × 9 = 2,239,488 combinations
+    # → sample generously
+
     train_df = make_case_dataframe_from_full_factorial(
         train_param_space,
-        max_cases=64,   # change as you want
-        seed=42
+        max_cases=256,   # was 64
+        seed=42,
     )
 
     test_df = make_case_dataframe_from_full_factorial(
         test_param_space,
-        max_cases=16,   # change as you want
-        seed=123
+        max_cases=64,    # was 16
+        seed=123,
     )
 
     train_dir = os.path.abspath("results/train")
@@ -441,3 +444,17 @@ if __name__ == "__main__":
     all_params = pd.concat([train_df, test_df], ignore_index=True)
     all_params.to_csv("results/parameters_all.csv", index=False)
     print("✅ Saved results/parameters_all.csv")
+    
+        # Save simulation metadata for plot script auto-detection
+    import json
+    meta = {
+        "t_start":    time_window[0],
+        "t_end":      time_window[1],
+        "dt":         dt,
+        "Nt":         int(round((time_window[1] - time_window[0]) / dt)),
+        "n_nodes":    N_THICKNESS_NODES,
+        "thickness_mm": THICKNESS_MM,
+        "discretisation": "CG",
+    }
+    with open(os.path.join(train_dir, "meta.json"), "w") as _f:
+        json.dump(meta, _f, indent=2)
