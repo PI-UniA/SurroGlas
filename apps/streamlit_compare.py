@@ -17,7 +17,7 @@ from torch.fft import rfft2, irfft2
 st.set_page_config(page_title="Annealing Lehr Comparison", layout="wide")
 st.title("Annealing Lehr: FEM vs MIFNO vs MIONet")
 
-
+plt.rcParams["font.sans-serif"] = ["Arial"]
 # ============================================================
 # Lehr zones
 # ============================================================
@@ -110,7 +110,7 @@ def add_zone_background_time(ax, t_axis, zone_windows, zone_colors, alpha=0.35):
             center = 0.5 * (left + right)
             ax.text(center, 1.02, zone,
                     transform=ax.get_xaxis_transform(),
-                    ha="center", va="bottom", fontsize=9)
+                    ha="center", va="bottom", fontsize=11)
         if t_min <= t1 <= t_max:
             ax.axvline(t1, linestyle="--", linewidth=0.8, color="gray")
 
@@ -128,7 +128,7 @@ def add_zone_background_distance(ax, x_axis, velocity, zone_windows, zone_colors
             center = 0.5 * (left + right)
             ax.text(center, 1.02, zone,
                     transform=ax.get_xaxis_transform(),
-                    ha="center", va="bottom", fontsize=9)
+                    ha="center", va="bottom", fontsize=11)
         if x_min <= x1 <= x_max:
             ax.axvline(x1, linestyle="--", linewidth=0.8, color="gray")
 
@@ -165,26 +165,154 @@ def build_zone_kpi_table(temp_field, stress_field, t_axis,
 # ============================================================
 # Plot helpers
 # ============================================================
-def plot_stress_vs_distance(x_axis, fem_s, mifno_s, mionet_s,
-                             surf, mid, velocity, zone_windows,
-                             zone_colors, show_zones=True,
-                             zone_alpha=0.35, show_fem=True):
-    fig, ax = plt.subplots(figsize=(8, 4))
+def plot_stress_vs_distance(
+    x_axis,
+    fem_S,
+    mifno_S,
+    mionet_S,
+    surface_idx,
+    mid_idx,
+    velocity,
+    zone_windows,
+    zone_colors,
+    show_zones=True,
+    zone_alpha=0.0,
+    show_fem=True,
+):
+
+    fig, ax = plt.subplots(
+        figsize=(6, 4),
+        dpi=800
+    )
+
+    # ========================================================
+    # FEM
+    # ========================================================
     if show_fem:
-        ax.plot(x_axis, fem_s[surf] / 1e6, "--", label="FEM surface")
-        ax.plot(x_axis, fem_s[mid]  / 1e6, "--", label="FEM mid")
-    ax.plot(x_axis, mifno_s[surf]  / 1e6, label="MIFNO surface")
-    ax.plot(x_axis, mionet_s[surf] / 1e6, label="MIONet surface")
-    ax.plot(x_axis, mifno_s[mid]   / 1e6, label="MIFNO mid")
-    ax.plot(x_axis, mionet_s[mid]  / 1e6, label="MIONet mid")
-    ax.axhline(0, color="black", lw=0.7)
-    ax.set_xlabel("Lehr distance (m)")
-    ax.set_ylabel("Stress (MPa)")
-    ax.set_title("Stress vs distance", fontsize=14, fontweight="semibold", pad=18)
-    ax.grid(True); ax.legend(ncol=2, fontsize=8)
+
+        ax.plot(
+            x_axis,
+            fem_S[surface_idx] / 1e6,
+            color="black",
+            linestyle="-",
+            linewidth=2.0,
+            label="FEM surface"
+        )
+
+        ax.plot(
+            x_axis,
+            fem_S[mid_idx] / 1e6,
+            color="black",
+            linestyle="--",
+            linewidth=2.0,
+            label="FEM mid-plane"
+        )
+
+    # ========================================================
+    # MIFNO
+    # ========================================================
+
+    ax.plot(
+        x_axis,
+        mifno_S[surface_idx] / 1e6,
+        color="blue",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIFNO surface"
+    )
+
+    ax.plot(
+        x_axis,
+        mifno_S[mid_idx] / 1e6,
+        color="blue",
+        linestyle="--",
+        linewidth=2.0,
+        label="MIFNO mid-plane"
+    )
+
+    # ========================================================
+    # MIONet
+    # ========================================================
+
+    ax.plot(
+        x_axis,
+        mionet_S[surface_idx] / 1e6,
+        color="green",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIONet surface"
+    )
+
+    ax.plot(
+        x_axis,
+        mionet_S[mid_idx] / 1e6,
+        color="green",
+        linestyle="--",
+        linewidth=2.0,
+        label="MIONet mid-plane"
+    )
+
+    # ========================================================
+    # Axis formatting
+    # ========================================================
+
+    ax.axhline(
+        0,
+        color="black",
+        lw=0.7
+    )
+
+    ax.set_xlabel(
+        "Lehr distance x (m)",
+        fontsize=16
+    )
+
+    ax.set_ylabel(
+        "Stress (MPa)",
+        fontsize=16
+    )
+
+    ax.set_title(
+        "Stress vs Lehr distance",
+        fontsize=18,
+        fontweight="semibold",
+        pad=20
+    )
+
+    ax.tick_params(axis='x', labelsize=14)
+    ax.tick_params(axis='y', labelsize=14)
+
+    ax.grid(True)
+
+    ax.legend(
+        fontsize=11,
+        ncol=2
+    )
+
+    # ========================================================
+    # Zones
+    # ========================================================
+
     if show_zones:
-        add_zone_background_distance(ax, x_axis, velocity,
-                                     zone_windows, zone_colors, alpha=zone_alpha)
+
+        add_zone_background_distance(
+            ax,
+            x_axis,
+            velocity,
+            zone_windows,
+            zone_colors,
+            zone_alpha
+        )
+
+    # ========================================================
+    # Publication style
+    # ========================================================
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
     return fig
 
 
@@ -227,6 +355,111 @@ def plot_field_map(field, title, cbar_label, cmap="viridis"):
     fig.colorbar(im, ax=ax).set_label(cbar_label)
     return fig
 
+
+
+def plot_field_map_vs_distance(field, x_axis, title, cbar_label, cmap="viridis",
+                               velocity=None, zone_windows=None, zone_colors=None,
+                               show_zones=True, zone_alpha=0.0,
+                               scale_factor=1.0,
+                               vmin=None, vmax=None):
+    """
+    Field map using the same logic as plot_case_annealing_multizone.py:
+    x-axis: Lehr distance [m]
+    y-axis: space index / thickness node [0 ... Nx-1]
+    """
+
+    nx_now = field.shape[0]
+
+    fig, ax = plt.subplots(
+        figsize=(6.0, 4.0),
+        dpi=1200
+    )
+
+    im = ax.imshow(
+        field / scale_factor,
+        aspect="auto",
+        origin="lower",
+        cmap=cmap,
+        vmin=vmin, vmax=vmax, 
+        extent=[x_axis[0], x_axis[-1], 0, nx_now - 1],
+        interpolation="nearest",
+    )
+
+    # ========================================================
+    # Labels & title
+    # ========================================================
+
+    ax.set_xlabel(
+        "Lehr distance x (m)",
+        fontsize=18
+    )
+
+    ax.set_ylabel(
+        "Thickness nodes",
+        fontsize=18
+    )
+
+    ax.set_title(
+        title,
+        fontsize=18,
+        fontweight="semibold",
+        pad=20
+    )
+
+    # ========================================================
+    # Tick font sizes
+    # ========================================================
+
+    ax.tick_params(
+        axis="x",
+        labelsize=15
+    )
+
+    ax.tick_params(
+        axis="y",
+        labelsize=15
+    )
+
+    # ========================================================
+    # Colorbar
+    # ========================================================
+
+    cbar = fig.colorbar(im, ax=ax)
+
+    cbar.set_label(
+        cbar_label,
+        fontsize=17
+    )
+
+    cbar.ax.tick_params(
+        labelsize=14
+    )
+
+    # ========================================================
+    # Zone background
+    # ========================================================
+
+    if show_zones and velocity is not None and zone_windows is not None:
+
+        add_zone_background_distance(
+            ax,
+            x_axis,
+            velocity,
+            zone_windows,
+            zone_colors or {},
+            alpha=zone_alpha,
+        )
+
+    # ========================================================
+    # Clean publication style
+    # ========================================================
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    return fig
 
 def plot_error_map(pred_field, true_field, title, cbar_label):
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -744,33 +977,208 @@ st.dataframe(
 # Plots — row 1: temperature vs time / distance
 # ============================================================
 st.markdown("---")
+
 left, right = st.columns(2)
 
+# ============================================================
+# Surface temperature vs time
+# ============================================================
 with left:
-    fig, ax = plt.subplots(figsize=(8, 4))
-    if mode == "Dataset evaluation":
-        ax.plot(t_axis, fem_T[surface_idx],   "--", label="FEM")
-    ax.plot(t_axis, mifno_T[surface_idx],     label="MIFNO")
-    ax.plot(t_axis, mionet_T[surface_idx],    label="MIONet")
-    ax.set_xlabel("Time (s)"); ax.set_ylabel("Temperature (K)")
-    ax.set_title("Surface temperature vs time", fontsize=14, fontweight="semibold", pad=18)
-    ax.grid(True); ax.legend()
-    if show_zones:
-        add_zone_background_time(ax, t_axis, ZONE_TIME_WINDOWS, ZONE_COLORS, zone_alpha)
-    st.pyplot(fig); plt.close(fig)
 
-with right:
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(
+        figsize=(6, 4),
+        dpi=800
+    )
+
+    # ========================================================
+    # FEM
+    # ========================================================
     if mode == "Dataset evaluation":
-        ax.plot(x_axis, fem_T[surface_idx],   "--", label="FEM")
-    ax.plot(x_axis, mifno_T[surface_idx],     label="MIFNO")
-    ax.plot(x_axis, mionet_T[surface_idx],    label="MIONet")
-    ax.set_xlabel("Lehr distance (m)"); ax.set_ylabel("Temperature (K)")
-    ax.set_title("Surface temperature vs distance", fontsize=14, fontweight="semibold", pad=18)
-    ax.grid(True); ax.legend()
+
+        ax.plot(
+            t_axis,
+            fem_T[surface_idx],
+            color="red",
+            linestyle="-",
+            linewidth=2.0,
+            label="FEM surface"
+        )
+
+    # ========================================================
+    # MIFNO
+    # ========================================================
+
+    ax.plot(
+        t_axis,
+        mifno_T[surface_idx],
+        color="orange",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIFNO surface"
+    )
+
+    # ========================================================
+    # MIONet
+    # ========================================================
+
+    ax.plot(
+        t_axis,
+        mionet_T[surface_idx],
+        color="brown",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIONet surface"
+    )
+
+    # ========================================================
+    # Formatting
+    # ========================================================
+
+    ax.set_xlabel(
+        "Time (s)",
+        fontsize=16
+    )
+
+    ax.set_ylabel(
+        "Temperature (K)",
+        fontsize=16
+    )
+
+    ax.set_title(
+        "Surface temperature vs time",
+        fontsize=18,
+        fontweight="semibold",
+        pad=20
+    )
+
+    ax.tick_params(axis='x', labelsize=14)
+    ax.tick_params(axis='y', labelsize=14)
+
+    ax.grid(True)
+
+    ax.legend(
+        fontsize=11
+    )
+
     if show_zones:
-        add_zone_background_distance(ax, x_axis, velocity, ZONE_TIME_WINDOWS, ZONE_COLORS, zone_alpha)
-    st.pyplot(fig); plt.close(fig)
+
+        add_zone_background_time(
+            ax,
+            t_axis,
+            ZONE_TIME_WINDOWS,
+            ZONE_COLORS,
+            zone_alpha
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+
+    plt.close(fig)
+
+
+# ============================================================
+# Surface temperature vs distance
+# ============================================================
+with right:
+
+    fig, ax = plt.subplots(
+        figsize=(6, 4),
+        dpi=800
+    )
+
+    # ========================================================
+    # FEM
+    # ========================================================
+    if mode == "Dataset evaluation":
+
+        ax.plot(
+            x_axis,
+            fem_T[surface_idx],
+            color="red",
+            linestyle="-",
+            linewidth=2.0,
+            label="FEM surface"
+        )
+
+    # ========================================================
+    # MIFNO
+    # ========================================================
+
+    ax.plot(
+        x_axis,
+        mifno_T[surface_idx],
+        color="orange",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIFNO surface"
+    )
+
+    # ========================================================
+    # MIONet
+    # ========================================================
+
+    ax.plot(
+        x_axis,
+        mionet_T[surface_idx],
+        color="brown",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIONet surface"
+    )
+
+    # ========================================================
+    # Formatting
+    # ========================================================
+
+    ax.set_xlabel(
+        "Lehr distance x (m)",
+        fontsize=16
+    )
+
+    ax.set_ylabel(
+        "Temperature (K)",
+        fontsize=16
+    )
+
+    ax.set_title(
+        "Surface temperature vs distance",
+        fontsize=18,
+        fontweight="semibold",
+        pad=20
+    )
+
+    ax.tick_params(axis='x', labelsize=14)
+    ax.tick_params(axis='y', labelsize=14)
+
+    ax.grid(True)
+
+    ax.legend(
+        fontsize=11
+    )
+
+    if show_zones:
+
+        add_zone_background_distance(
+            ax,
+            x_axis,
+            velocity,
+            ZONE_TIME_WINDOWS,
+            ZONE_COLORS,
+            zone_alpha
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+
+    plt.close(fig)
 
 
 # ============================================================
@@ -779,29 +1187,156 @@ with right:
 left, right = st.columns(2)
 
 with left:
-    fig, ax = plt.subplots(figsize=(8, 4))
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=800)
+
+    # ========================================================
+    # FEM
+    # ========================================================
     if mode == "Dataset evaluation":
-        ax.plot(t_axis, fem_S[surface_idx] / 1e6, "--", label="FEM surface")
-        ax.plot(t_axis, fem_S[mid_idx]     / 1e6, "--", label="FEM mid")
-    ax.plot(t_axis, mifno_S[surface_idx]  / 1e6, label="MIFNO surface")
-    ax.plot(t_axis, mionet_S[surface_idx] / 1e6, label="MIONet surface")
-    ax.plot(t_axis, mifno_S[mid_idx]      / 1e6, label="MIFNO mid")
-    ax.plot(t_axis, mionet_S[mid_idx]     / 1e6, label="MIONet mid")
-    ax.axhline(0, color="black", lw=0.7)
-    ax.set_xlabel("Time (s)"); ax.set_ylabel("Stress (MPa)")
-    ax.set_title("Stress vs time", fontsize=14, fontweight="semibold", pad=18)
-    ax.grid(True); ax.legend(ncol=2, fontsize=8)
+
+        # surface = solid
+        ax.plot(
+            t_axis,
+            fem_S[surface_idx] / 1e6,
+            color="black",
+            linestyle="-",
+            linewidth=2.0,
+            label="FEM surface"
+        )
+
+        # mid-plane = dashed
+        ax.plot(
+            t_axis,
+            fem_S[mid_idx] / 1e6,
+            color="black",
+            linestyle="--",
+            linewidth=2.0,
+            label="FEM mid-plane"
+        )
+
+    # ========================================================
+    # MIFNO
+    # ========================================================
+
+    # surface = solid
+    ax.plot(
+        t_axis,
+        mifno_S[surface_idx] / 1e6,
+        color="blue",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIFNO surface"
+    )
+
+    # mid-plane = dashed
+    ax.plot(
+        t_axis,
+        mifno_S[mid_idx] / 1e6,
+        color="blue",
+        linestyle="--",
+        linewidth=2.0,
+        label="MIFNO mid-plane"
+    )
+
+    # ========================================================
+    # MIONet
+    # ========================================================
+
+    # surface = solid
+    ax.plot(
+        t_axis,
+        mionet_S[surface_idx] / 1e6,
+        color="green",
+        linestyle="-",
+        linewidth=2.0,
+        label="MIONet surface"
+    )
+
+    # mid-plane = dashed
+    ax.plot(
+        t_axis,
+        mionet_S[mid_idx] / 1e6,
+        color="green",
+        linestyle="--",
+        linewidth=2.0,
+        label="MIONet mid-plane"
+    )
+
+    # ========================================================
+    # Axis formatting
+    # ========================================================
+
+    ax.axhline(
+        0,
+        color="black",
+        lw=0.7
+    )
+
+    ax.set_xlabel(
+        "Time (s)",
+        fontsize=16
+    )
+
+    ax.set_ylabel(
+        "Stress (MPa)",
+        fontsize=16
+    )
+
+    ax.set_title(
+        "Stress vs time",
+        fontsize=18,
+        fontweight="semibold",
+        pad=20
+    )
+
+    ax.tick_params(axis='x', labelsize=14)
+    ax.tick_params(axis='y', labelsize=14)
+
+    ax.grid(True)
+
+    ax.legend(
+        ncol=2,
+        fontsize=11
+    )
+
     if show_zones:
-        add_zone_background_time(ax, t_axis, ZONE_TIME_WINDOWS, ZONE_COLORS, zone_alpha)
-    st.pyplot(fig); plt.close(fig)
+        add_zone_background_time(
+            ax,
+            t_axis,
+            ZONE_TIME_WINDOWS,
+            ZONE_COLORS,
+            zone_alpha
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+
+    plt.close(fig)
 
 with right:
-    st.pyplot(plot_stress_vs_distance(
-        x_axis, fem_S, mifno_S, mionet_S,
-        surface_idx, mid_idx, velocity,
-        ZONE_TIME_WINDOWS, ZONE_COLORS,
-        show_zones=show_zones, zone_alpha=zone_alpha,
-        show_fem=(mode == "Dataset evaluation")))
+
+    fig = plot_stress_vs_distance(
+        x_axis,
+        fem_S,
+        mifno_S,
+        mionet_S,
+        surface_idx,
+        mid_idx,
+        velocity,
+        ZONE_TIME_WINDOWS,
+        ZONE_COLORS,
+        show_zones=show_zones,
+        zone_alpha=zone_alpha,
+        show_fem=(mode == "Dataset evaluation")
+    )
+
+    st.pyplot(fig)
+    plt.close(fig)
 
 
 # ============================================================
@@ -823,70 +1358,356 @@ with right:
 # ============================================================
 # Plots — row 4: accuracy & speed bar charts
 # ============================================================
+
 left, right = st.columns(2)
 
+# ============================================================
+# Temperature accuracy
+# ============================================================
 with left:
-    fig, ax = plt.subplots(figsize=(8, 4))
-    vals = [0.0, tl_mifno*100, tl_mionet*100]
-    bars = ax.bar(["FEM", "MIFNO", "MIONet"], vals)
-    ax.set_title("Temperature accuracy", fontsize=14, fontweight="semibold", pad=18)
-    ax.set_ylabel("Relative L2 Error (%)")
-    ax.grid(True, axis="y", linestyle="--", alpha=0.5)
-    ymax = max(vals) or 1.0
-    ax.set_ylim(0, ymax * 1.3)
-    for b, v in zip(bars, vals):
-        ax.text(b.get_x()+b.get_width()/2, b.get_height()+0.05*ymax,
-                f"{v:.3f}", ha="center", va="bottom", fontsize=10, clip_on=False)
-    st.pyplot(fig); plt.close(fig)
 
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=800)
+
+    vals = [tl_mifno * 100, tl_mionet * 100]
+
+    bars = ax.bar(
+        ["MIFNO", "MIONet"],
+        vals,
+    )
+
+    ax.set_title(
+        "Temperature accuracy",
+        fontsize=18,
+        fontweight="semibold",
+        pad=20,
+    )
+
+    ax.set_ylabel(
+        "Relative L2 Error (%)",
+        fontsize=16,
+    )
+
+    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="y", labelsize=14)
+
+    ax.grid(True, axis="y", linestyle="--", alpha=0.5)
+
+    ymax = max(vals) or 1.0
+    ax.set_ylim(0, ymax * 1.30)
+
+    for b, v in zip(bars, vals):
+        ax.text(
+            b.get_x() + b.get_width() / 2,
+            b.get_height() + 0.05 * ymax,
+            f"{v:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=13,
+            clip_on=False,
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+    plt.close(fig)
+
+
+# ============================================================
+# Stress accuracy
+# ============================================================
 with right:
-    fig, ax = plt.subplots(figsize=(8, 4))
-    vals = [0.0, sl_mifno*100, sl_mionet*100]
-    bars = ax.bar(["FEM", "MIFNO", "MIONet"], vals)
-    ax.set_title("Stress accuracy", fontsize=14, fontweight="semibold", pad=18)
-    ax.set_ylabel("Relative L2 Error (%)")
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=800)
+
+    vals = [sl_mifno * 100, sl_mionet * 100]
+
+    bars = ax.bar(
+        ["MIFNO", "MIONet"],
+        vals,
+    )
+
+    ax.set_title(
+        "Stress accuracy",
+        fontsize=18,
+        fontweight="semibold",
+        pad=18,
+    )
+
+    ax.set_ylabel(
+        "Relative L2 Error (%)",
+        fontsize=16,
+    )
+
+    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="y", labelsize=14)
+
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
+
     ymax = max(vals) or 1.0
-    ax.set_ylim(0, ymax * 1.3)
+    ax.set_ylim(0, ymax * 1.30)
+
     for b, v in zip(bars, vals):
-        ax.text(b.get_x()+b.get_width()/2, b.get_height()+0.05*ymax,
-                f"{v:.3f}", ha="center", va="bottom", fontsize=10, clip_on=False)
-    st.pyplot(fig); plt.close(fig)
+        ax.text(
+            b.get_x() + b.get_width() / 2,
+            b.get_height() + 0.05 * ymax,
+            f"{v:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=13,
+            clip_on=False,
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+    plt.close(fig)
+
+
+# ============================================================
+# Second row
+# ============================================================
 
 left, right = st.columns(2)
 
+# ============================================================
+# Computation time
+# ============================================================
 with left:
-    fig, ax = plt.subplots(figsize=(8, 4))
-    vals = [fem_t_per_sample, mifno_t_per_sample, mionet_t_per_sample]
-    bars = ax.bar(["FEM", "MIFNO", "MIONet"], vals)
-    ax.set_title("Computation time", fontsize=14, fontweight="semibold", pad=18)
-    ax.set_ylabel("Time per sample (s)")
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=800)
+
+    vals = [
+        fem_t_per_sample,
+        mifno_t_per_sample,
+        mionet_t_per_sample,
+    ]
+
+    bars = ax.bar(
+        ["FEM", "MIFNO", "MIONet"],
+        vals,
+    )
+
+    ax.set_title(
+        "Computation time",
+        fontsize=18,
+        fontweight="semibold",
+        pad=18,
+    )
+
+    ax.set_ylabel(
+        "Time per sample (s)",
+        fontsize=16,
+    )
+
+    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="y", labelsize=14)
+
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
+
     ymax = max(vals) or 1.0
     ax.set_ylim(0, ymax * 1.25)
-    for b, v in zip(bars, vals):
-        ax.text(b.get_x()+b.get_width()/2, b.get_height()+0.03*ymax,
-                f"{v:.4f}", ha="center", va="bottom", fontsize=10, clip_on=False)
-    st.pyplot(fig); plt.close(fig)
 
+    for b, v in zip(bars, vals):
+        ax.text(
+            b.get_x() + b.get_width() / 2,
+            b.get_height() + 0.03 * ymax,
+            f"{v:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=13,
+            clip_on=False,
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+    plt.close(fig)
+
+
+# ============================================================
+# Speed-up vs FEM
+# ============================================================
 with right:
-    fig, ax = plt.subplots(figsize=(8, 4))
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=800)
+
     vals = [1.0, mifno_speedup, mionet_speedup]
-    bars = ax.bar(["FEM", "MIFNO", "MIONet"], vals)
-    ax.set_title("Speed-up vs FEM", fontsize=14, fontweight="semibold", pad=18)
-    ax.set_ylabel("Speed-up (×)")
+
+    bars = ax.bar(
+        ["FEM", "MIFNO", "MIONet"],
+        vals,
+    )
+
+    ax.set_title(
+        "Speed-up vs FEM",
+        fontsize=18,
+        fontweight="semibold",
+        pad=18,
+    )
+
+    ax.set_ylabel(
+        "Speed-up (×)",
+        fontsize=16,
+    )
+
+    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="y", labelsize=14)
+
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
+
     ymax = max(vals) or 1.0
     ax.set_ylim(0, ymax * 1.15)
+
     for b, v in zip(bars, vals):
-        ax.text(b.get_x()+b.get_width()/2, b.get_height()+0.02*ymax,
-                f"{v:.1f}×", ha="center", va="bottom", fontsize=10, clip_on=False)
+        ax.text(
+            b.get_x() + b.get_width() / 2,
+            b.get_height() + 0.02 * ymax,
+            f"{v:.1f}×",
+            ha="center",
+            va="bottom",
+            fontsize=13,
+            clip_on=False,
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+    plt.close(fig)
+# ============================================================
+# Plots — row 5: temperature field maps vs Lehr distance
+# Same axis logic as plot_case_annealing_multizone.py:
+# extent=[x_axis[0], x_axis[-1], 0, nx_now - 1]
+# ============================================================
+st.markdown("## Field maps vs Lehr distance")
+
+# ── Shared temperature colour limits across FEM / MIFNO / MIONet ─────
+_all_T  = np.concatenate([fem_T.ravel(), mifno_T.ravel(), mionet_T.ravel()])
+t_vmin  = float(np.min(_all_T))
+t_vmax  = float(np.max(_all_T))
+
+cols = st.columns(3)
+
+with cols[0]:
+    fig = plot_field_map_vs_distance(
+        fem_T,
+        x_axis,
+        "Temperature Field vs Lehr Distance",
+        "Temperature (K)",
+        cmap="RdYlBu_r",
+        velocity=velocity,
+        zone_windows=ZONE_TIME_WINDOWS,
+        zone_colors=ZONE_COLORS,
+        show_zones=show_zones,
+        zone_alpha=0.0,
+        vmin=t_vmin, vmax=t_vmax,
+    )
+    st.pyplot(fig); plt.close(fig)
+
+with cols[1]:
+    fig = plot_field_map_vs_distance(
+        mifno_T,
+        x_axis,
+        "Temperature Field vs Lehr Distance",
+        "Temperature (K)",
+        cmap="RdYlBu_r",
+        velocity=velocity,
+        zone_windows=ZONE_TIME_WINDOWS,
+        zone_colors=ZONE_COLORS,
+        show_zones=show_zones,
+        zone_alpha=0.0,
+        vmin=t_vmin, vmax=t_vmax,
+    )
+    st.pyplot(fig); plt.close(fig)
+
+with cols[2]:
+    fig = plot_field_map_vs_distance(
+        mionet_T,
+        x_axis,
+        "Temperature Field vs Lehr Distance",
+        "Temperature (K)",
+        cmap="RdYlBu_r",
+        velocity=velocity,
+        zone_windows=ZONE_TIME_WINDOWS,
+        zone_colors=ZONE_COLORS,
+        show_zones=show_zones,
+        zone_alpha=0.0,
+        vmin=t_vmin, vmax=t_vmax,
+    )
     st.pyplot(fig); plt.close(fig)
 
 
 # ============================================================
-# Plots — row 5 & 6: field maps and error maps
+# Plots — row 6: stress field maps vs Lehr distance
+# Stress scaling follows your plot_case_annealing_multizone.py: stress / 10e6
 # ============================================================
+cols = st.columns(3)
+
+with cols[0]:
+    fig = plot_field_map_vs_distance(
+        fem_S,
+        x_axis,
+        "Stress Field vs Lehr Distance",
+        "Stress (MPa)",
+        cmap="PuOr",
+        velocity=velocity,
+        zone_windows=ZONE_TIME_WINDOWS,
+        zone_colors=ZONE_COLORS,
+        show_zones=show_zones,
+        zone_alpha=0.0,
+        scale_factor=10e6,
+    )
+    st.pyplot(fig); plt.close(fig)
+
+with cols[1]:
+    fig = plot_field_map_vs_distance(
+        mifno_S,
+        x_axis,
+        "Stress Field vs Lehr Distance",
+        "Stress (MPa)",
+        cmap="PuOr",
+        velocity=velocity,
+        zone_windows=ZONE_TIME_WINDOWS,
+        zone_colors=ZONE_COLORS,
+        show_zones=show_zones,
+        zone_alpha=0.0,
+        scale_factor=10e6,
+    )
+    st.pyplot(fig); plt.close(fig)
+
+with cols[2]:
+    fig = plot_field_map_vs_distance(
+        mionet_S,
+        x_axis,
+        "Stress Field vs Lehr Distance",
+        "Stress (MPa)",
+        cmap="PuOr",
+        velocity=velocity,
+        zone_windows=ZONE_TIME_WINDOWS,
+        zone_colors=ZONE_COLORS,
+        show_zones=show_zones,
+        zone_alpha=0.0,
+        scale_factor=10e6,
+    )
+    st.pyplot(fig); plt.close(fig)
+
+
+# ============================================================
+# Plots — row 7: original field maps by time index
+# ============================================================
+st.markdown("## Field maps by time index")
+
 left, right = st.columns(2)
 with left:
     st.pyplot(plot_field_map(mifno_T,  "MIFNO temperature field",  "Temperature (K)", "RdYlBu_r"))
@@ -898,6 +1719,12 @@ with left:
     st.pyplot(plot_field_map(mifno_S  / 1e6, "MIFNO stress field",  "Stress (MPa)", "PuOr"))
 with right:
     st.pyplot(plot_field_map(mionet_S / 1e6, "MIONet stress field", "Stress (MPa)", "PuOr"))
+
+
+# ============================================================
+# Plots — row 8: error maps
+# ============================================================
+st.markdown("## Error maps")
 
 left, right = st.columns(2)
 with left:

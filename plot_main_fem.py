@@ -12,18 +12,22 @@ import matplotlib as mpl
 
 # ── Global style matching paper ──────────────────────────────
 mpl.rcParams.update({
-    "font.family":       "serif",
-    "font.size":         11,
-    "axes.linewidth":    1.0,
-    "axes.spines.top":   False,
-    "axes.spines.right": False,
-    "xtick.direction":   "in",
-    "ytick.direction":   "in",
-    "xtick.major.size":  5,
-    "ytick.major.size":  5,
-    "legend.frameon":    False,
-    "legend.fontsize":   10,
-    "figure.dpi":        150,
+    "font.family": "serif",
+    "font.serif": ["Nimbus Roman"],
+    "mathtext.fontset": "stix",
+
+    "font.size": 12,
+    "axes.titlesize": 14,
+    "axes.labelsize": 14,
+
+    "xtick.labelsize": 12,
+    "ytick.labelsize": 12,
+
+    "legend.fontsize": 11,
+    "legend.title_fontsize": 11,
+
+    "figure.dpi": 800,
+    "savefig.dpi": 800,
 })
 
 LW_MAIN = 2.0    # main curve line width
@@ -36,14 +40,14 @@ DATA_DIR = "results/fem_aronen2018"
 PLOT_DIR  = "plots_aronen2018"
 os.makedirs(PLOT_DIR, exist_ok=True)
 
-# ── Simulation settings — loaded automatically from meta.json ────────────
+# ── Simulation settings — loaded automatically from meta.json ───────────
 # These defaults are overridden by meta.json if it exists.
 t_start      = 0.0
 t_end        = 100.0
-dt           = 0.001
+dt           = 0.01
 Nt           = int(round((t_end - t_start) / dt))
 THICKNESS_MM = 4.0
-N_NODES      = 29
+N_NODES      = 29   
 
 def _load_meta():
     """Load simulation metadata saved by main_fem.py."""
@@ -125,8 +129,14 @@ def load_fields():
         nx_s_nodes = dofs_s
         nc = 1
     stress = (arr_s.reshape(Nt, nx_s_nodes, nc)[:, :, 0].T
-              if nc > 1 else arr_s.reshape(Nt, nx_s_nodes).T)
+            if nc > 1 else arr_s.reshape(Nt, nx_s_nodes).T)
 
+    sig_coord_path = os.path.join(DATA_DIR, "sigma_dof_coords.txt")
+    if os.path.exists(sig_coord_path):
+        x_sig = np.loadtxt(sig_coord_path)
+        sig_sort = np.argsort(x_sig)
+        stress = stress[sig_sort]          # now row 0 = most-negative x = surface
+        z = np.sort(x_sig) * 1000.0        # mm, replaces the linspace on line 143
     # ── Fictive temperature ────────────────────────────────────────────────
     fictive = None
     if os.path.exists(ftmp_path):
@@ -146,18 +156,15 @@ def load_fields():
     return temperature, stress, fictive, nx, z, x_T
 
 
-def surf_mid(nx):
-    """
-    Return (surface_idx, midplane_idx) for the stress array (always CG).
-    Node 0 = surface (x = -h/2), node nx//2 = midplane (x = 0).
-    Works correctly because stress is always stored in CG (N_NODES nodes).
-    """
+def surf_mid(nx, z=None):
+    if z is not None:
+        return int(np.argmin(z)), int(np.argmin(np.abs(z)))  # surface, midplane
     return 0, nx // 2
 
 
 def _save(fig, name):
     p = os.path.join(PLOT_DIR, name)
-    fig.savefig(p, dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(p, dpi=800, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     print(f"  Saved: {p}")
 
@@ -174,7 +181,7 @@ def _log_taxis(ax):
     # x-axis: from first saved timestep to t_end, with small margins
     x_max = 10 ** (np.ceil(np.log10(t_end)))   # round up to next power of 10
     ax.set_xlim(1e-3, x_max)
-    ax.set_xlabel("Time $t$ [s]", fontsize=12)
+    ax.set_xlabel("Time $t$ [s]", fontsize=14)
 
 
 # ============================================================
@@ -320,7 +327,7 @@ def plot_fig5(stress, nx):
             f"Residual:  surface = {s_res:.0f} MPa\n"
             f"           mid-plane = +{m_res:.0f} MPa",
             transform=ax.transAxes, ha="right", va="bottom",
-            fontsize=9, family="monospace",
+            fontsize=9,
             bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec="lightgray"))
 
     fig.tight_layout()
@@ -600,124 +607,156 @@ def compute_error_metrics(stress, nx):
 
 def plot_fig10_vs_paper(temperature, nx, x_T=None):
     """
-    Overlay FEM surface and mid-plane temperature against
-    digitised Aronen & Karvinen (2018) Fig. 4 data.
-    FEM: solid/dashed black lines
-    Paper: open circle/square markers
+    Overlay FEM surface and mid-plane temperature against digitised
+    Aronen & Karvinen (2018) Fig. 4 data.
+
+    FEM:
+        - Black lines
+        - Surface = solid
+        - Mid-plane = dashed
+
+    Paper:
+        - Red open symbols
+        - Surface = circle
+        - Mid-plane = square
+        - Only every second digitised point is shown
     """
     if PAPER_T_SURF is None or PAPER_T_MID is None:
         print("  Skipping fig10 — temperature paper CSV files not available.")
         return
 
     s, m = surf_mid(nx)
+
     nx_T = temperature.shape[0]
+
     if nx_T != nx and x_T is not None:
-        idx_surf = np.argmin(np.abs(x_T - (-THICKNESS_MM/2)))
-        idx_mid  = np.argmin(np.abs(x_T))
+        idx_surf = np.argmin(np.abs(x_T - (-THICKNESS_MM / 2)))
+        idx_mid = np.argmin(np.abs(x_T))
     else:
         idx_surf, idx_mid = s, m
 
     T_s = temperature[idx_surf] - 273.15
-    T_m = temperature[idx_mid]  - 273.15
+    T_m = temperature[idx_mid] - 273.15
 
-    # Prepend IC — use t slightly before first timestep to avoid duplicates
-    t_ic     = t_array[0] * 0.1
-    t_plot   = np.concatenate([[t_ic], t_array])
+    t_ic = t_array[0] * 0.1
+    t_plot = np.concatenate([[t_ic], t_array])
     T_s_plot = np.concatenate([[650.0], T_s])
     T_m_plot = np.concatenate([[650.0], T_m])
 
-    # Deduplicate time axis for interpolation
-    _, uniq  = np.unique(t_plot, return_index=True)
-    t_uniq   = t_plot[uniq]
-    Ts_uniq  = T_s_plot[uniq]
-    Tm_uniq  = T_m_plot[uniq]
+    _, uniq = np.unique(t_plot, return_index=True)
+    t_uniq = t_plot[uniq]
+    Ts_uniq = T_s_plot[uniq]
+    Tm_uniq = T_m_plot[uniq]
 
     fig, ax = plt.subplots(figsize=(7.5, 5.5))
     _hgrid(ax)
 
-    ax.plot(t_plot, T_s_plot, color="black", lw=LW_MAIN, ls="-",
-            label="FEM --- Surface")
-    ax.plot(t_plot, T_m_plot, color="black", lw=LW_MAIN, ls="--",
-            label="FEM --- Mid-plane")
-    ax.plot(PAPER_T_SURF[:, 0], PAPER_T_SURF[:, 1],
-            color="black", lw=0, marker="o", ms=5,
-            mfc="white", mew=1.3, label="Aronen 2018 --- Surface")
-    ax.plot(PAPER_T_MID[:, 0],  PAPER_T_MID[:, 1],
-            color="black", lw=0, marker="s", ms=5,
-            mfc="white", mew=1.3, label="Aronen 2018 --- Mid-plane")
+    ax.plot(
+        t_plot, T_s_plot,
+        color="black", lw=LW_MAIN, ls="-",
+        label="FEM — Surface"
+    )
 
-    ax.set_ylabel("Temperature $T$ [degC]", fontsize=12)
+    ax.plot(
+        t_plot, T_m_plot,
+        color="black", lw=LW_MAIN, ls="--",
+        label="FEM — Mid-plane"
+    )
+
+    paper_surf = PAPER_T_SURF[::2]
+    paper_mid = PAPER_T_MID[::2]
+
+    ax.plot(
+        paper_surf[:, 0], paper_surf[:, 1],
+        linestyle="None",
+        marker="o",
+        markersize=5,
+        markerfacecolor="white",
+        markeredgecolor="red",
+        markeredgewidth=1.2,
+        label="Aronen 2018 — Surface"
+    )
+
+    ax.plot(
+        paper_mid[:, 0], paper_mid[:, 1],
+        linestyle="None",
+        marker="s",
+        markersize=5,
+        markerfacecolor="white",
+        markeredgecolor="red",
+        markeredgewidth=1.2,
+        label="Aronen 2018 — Mid-plane"
+    )
+
+    ax.set_ylabel("Temperature $T$ [°C]", fontsize=14)
     ax.set_ylim(0, 700)
     ax.set_yticks(range(0, 701, 100))
+
     _log_taxis(ax)
-    ax.legend(loc="upper right", fontsize=9, ncol=2)
+
+    ax.legend(loc="lower left", fontsize=10, ncol=2)
 
     from scipy.interpolate import interp1d
-    interp_s = interp1d(t_uniq, Ts_uniq, bounds_error=False,
-                        fill_value="extrapolate")
-    interp_m = interp1d(t_uniq, Tm_uniq, bounds_error=False,
-                        fill_value="extrapolate")
+
+    interp_s = interp1d(
+        t_uniq, Ts_uniq,
+        bounds_error=False,
+        fill_value="extrapolate"
+    )
+
+    interp_m = interp1d(
+        t_uniq, Tm_uniq,
+        bounds_error=False,
+        fill_value="extrapolate"
+    )
 
     fem_at_ts = interp_s(PAPER_T_SURF[:, 0])
     fem_at_tm = interp_m(PAPER_T_MID[:, 0])
+
     err_s = fem_at_ts - PAPER_T_SURF[:, 1]
     err_m = fem_at_tm - PAPER_T_MID[:, 1]
 
-    # Normalise by paper temperature range (max-min) for % metrics
     range_ts = float(np.ptp(PAPER_T_SURF[:, 1])) or 1.0
-    range_tm = float(np.ptp(PAPER_T_MID[:, 1]))  or 1.0
+    range_tm = float(np.ptp(PAPER_T_MID[:, 1])) or 1.0
 
-    mae_s      = float(np.mean(np.abs(err_s)))
-    mae_m      = float(np.mean(np.abs(err_m)))
-    mae_s_pct  = mae_s / range_ts * 100
-    mae_m_pct  = mae_m / range_tm * 100
+    mae_s = float(np.mean(np.abs(err_s)))
+    mae_m = float(np.mean(np.abs(err_m)))
+    mae_s_pct = mae_s / range_ts * 100
+    mae_m_pct = mae_m / range_tm * 100
 
-    rmse_s     = float(np.sqrt(np.mean(err_s**2)))
-    rmse_m     = float(np.sqrt(np.mean(err_m**2)))
+    rmse_s = float(np.sqrt(np.mean(err_s**2)))
+    rmse_m = float(np.sqrt(np.mean(err_m**2)))
     rmse_s_pct = rmse_s / range_ts * 100
     rmse_m_pct = rmse_m / range_tm * 100
 
-    max_s      = float(np.max(np.abs(err_s)))
-    max_m      = float(np.max(np.abs(err_m)))
-    max_s_pct  = max_s / range_ts * 100
-    max_m_pct  = max_m / range_tm * 100
-
-    ax.text(0.97, 0.08,
-            (f"MAE:  surf={mae_s:.1f}\u00b0C ({mae_s_pct:.1f}%)  mid={mae_m:.1f}\u00b0C ({mae_m_pct:.1f}%)\n"
-             f"RMSE: surf={rmse_s:.1f}\u00b0C ({rmse_s_pct:.1f}%)  mid={rmse_m:.1f}\u00b0C ({rmse_m_pct:.1f}%)"),
-            transform=ax.transAxes, ha="right", va="bottom",
-            fontsize=8.5, family="monospace",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white",
-                      alpha=0.9, ec="lightgray"))
-
-    ax.set_title(
-        "FEM vs Aronen & Karvinen (2018) — Temperature\n"
-        rf"$b$ = {THICKNESS_MM} mm,  $T_0$ = 650 °C,  $h$ = 450 W m$^{{-2}}$ K$^{{-1}}$",
-        fontsize=11)
+    max_s = float(np.max(np.abs(err_s)))
+    max_m = float(np.max(np.abs(err_m)))
+    max_s_pct = max_s / range_ts * 100
+    max_m_pct = max_m / range_tm * 100
 
     fig.tight_layout()
     _save(fig, "fig10_temperature_vs_paper.png")
 
-    # Print error report
     sep = "-" * 60
     print(f"\n{sep}")
-    print("  Temperature error — FEM vs Aronen 2018")
+    print(" Temperature error — FEM vs Aronen 2018")
     print(sep)
     print(f"  {'Metric':<30} {'Surface':>12} {'Mid-plane':>12}")
     print(f"  {'-'*30} {'-'*12} {'-'*12}")
+
     rows_T = [
-        ("MAE [degC]",          f"{mae_s:>12.2f}",     f"{mae_m:>12.2f}"),
-        ("MAE [%]",             f"{mae_s_pct:>12.1f}", f"{mae_m_pct:>12.1f}"),
-        ("RMSE [degC]",         f"{rmse_s:>12.2f}",    f"{rmse_m:>12.2f}"),
-        ("RMSE [%]",            f"{rmse_s_pct:>12.1f}",f"{rmse_m_pct:>12.1f}"),
-        ("Max abs error [degC]",f"{max_s:>12.2f}",     f"{max_m:>12.2f}"),
-        ("Max abs error [%]",   f"{max_s_pct:>12.1f}", f"{max_m_pct:>12.1f}"),
+        ("MAE [°C]", f"{mae_s:>12.2f}", f"{mae_m:>12.2f}"),
+        ("MAE [%]", f"{mae_s_pct:>12.1f}", f"{mae_m_pct:>12.1f}"),
+        ("RMSE [°C]", f"{rmse_s:>12.2f}", f"{rmse_m:>12.2f}"),
+        ("RMSE [%]", f"{rmse_s_pct:>12.1f}", f"{rmse_m_pct:>12.1f}"),
+        ("Max abs error [°C]", f"{max_s:>12.2f}", f"{max_m:>12.2f}"),
+        ("Max abs error [%]", f"{max_s_pct:>12.1f}", f"{max_m_pct:>12.1f}"),
     ]
+
     for label, vs, vm in rows_T:
         print(f"  {label:<30} {vs} {vm}")
+
     print(sep)
-
-
 # ============================================================
 # Fig. 9 — FEM vs Paper (Aronen 2018) stress comparison
 # ============================================================
@@ -725,8 +764,17 @@ def plot_fig10_vs_paper(temperature, nx, x_T=None):
 def plot_fig9_vs_paper(stress, nx):
     """
     Overlay FEM stress results against digitised Aronen 2018 paper data.
-    FEM: solid/dashed black lines
-    Paper: open circle/square markers (no connecting line)
+
+    FEM:
+        - Black lines
+        - Surface = solid
+        - Mid-plane = dashed
+
+    Paper:
+        - Green open symbols
+        - Surface = circle
+        - Mid-plane = square
+        - Only every second digitised point is shown
     """
     if PAPER_SURF is None or PAPER_MID is None:
         print("  Skipping fig9 — paper CSV files not available.")
@@ -736,149 +784,263 @@ def plot_fig9_vs_paper(stress, nx):
     sig_s = stress[s] / 1e6
     sig_m = stress[m] / 1e6
 
-    # Prepend IC at t=1e-3
-    t_plot   = np.concatenate([[1e-3], t_array])
-    sig_s_pl = np.concatenate([[0.0],  sig_s])
-    sig_m_pl = np.concatenate([[0.0],  sig_m])
+    t_plot = np.concatenate([[1e-3], t_array])
+    sig_s_pl = np.concatenate([[0.0], sig_s])
+    sig_m_pl = np.concatenate([[0.0], sig_m])
 
     fig, ax = plt.subplots(figsize=(7.5, 5.5))
     _hgrid(ax)
 
-    # FEM lines
-    ax.plot(t_plot, sig_s_pl, color="black", lw=LW_MAIN, ls="-",
-            label="FEM — Surface")
-    ax.plot(t_plot, sig_m_pl, color="black", lw=LW_MAIN, ls="--",
-            label="FEM — Mid-plane")
+    ax.plot(
+        t_plot, sig_s_pl,
+        color="black", lw=LW_MAIN, ls="-",
+        label="FEM — Surface"
+    )
 
-    # Paper markers — open symbols, no line
-    ax.plot(PAPER_SURF[:, 0], PAPER_SURF[:, 1],
-            color="black", lw=0, marker="o", ms=5,
-            mfc="white", mew=1.3, label="Aronen 2018 — Surface")
-    ax.plot(PAPER_MID[:, 0],  PAPER_MID[:, 1],
-            color="black", lw=0, marker="s", ms=5,
-            mfc="white", mew=1.3, label="Aronen 2018 — Mid-plane")
+    ax.plot(
+        t_plot, sig_m_pl,
+        color="black", lw=LW_MAIN, ls="--",
+        label="FEM — Mid-plane"
+    )
+
+    paper_surf = PAPER_SURF[::1]
+    paper_mid = PAPER_MID[::1]
+
+    ax.plot(
+        paper_surf[:, 0], paper_surf[:, 1],
+        linestyle="None",
+        marker="o",
+        markersize=5,
+        markerfacecolor="white",
+        markeredgecolor="green",
+        markeredgewidth=1.2,
+        label="Aronen 2018 — Surface"
+    )
+
+    ax.plot(
+        paper_mid[:, 0], paper_mid[:, 1],
+        linestyle="None",
+        marker="s",
+        markersize=5,
+        markerfacecolor="white",
+        markeredgecolor="green",
+        markeredgewidth=1.2,
+        label="Aronen 2018 — Mid-plane"
+    )
 
     ax.axhline(0, color="black", lw=0.7)
-    ax.set_ylabel(r"Stress $\sigma$ [MPa]", fontsize=12)
+
+    ax.set_ylabel(r"Stress $\sigma$ [MPa]", fontsize=14)
     ax.set_ylim(-140, 80)
     ax.set_yticks(range(-140, 81, 20))
+
     _log_taxis(ax)
-    ax.legend(loc="lower left", fontsize=9, ncol=2)
 
-    # Residual annotation
-    n_res = max(1, Nt // 20)
-    s_res = float(np.mean(sig_s[-n_res:]))
-    m_res = float(np.mean(sig_m[-n_res:]))
-    p_s   = float(PAPER_SURF[-3:, 1].mean())   # last 3 paper points
-    p_m   = float(PAPER_MID[-3:, 1].mean())
-    err_s = abs((s_res - p_s) / p_s) * 100 if p_s != 0 else float("nan")
-    err_m = abs((m_res - p_m) / p_m) * 100 if p_m != 0 else float("nan")
-    ax.text(0.97, 0.08,
-            (f"FEM:   surface={s_res:.0f} MPa   mid-plane=+{m_res:.0f} MPa\n"
-             f"Paper: surface={p_s:.0f} MPa   mid-plane=+{p_m:.0f} MPa\n"
-             f"Error: surface={err_s:.1f}%      mid-plane={err_m:.1f}%"),
-            transform=ax.transAxes, ha="right", va="bottom",
-            fontsize=8.5, family="monospace",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white",
-                      alpha=0.9, ec="lightgray"))
-
-    ax.set_title(
-        "FEM vs Aronen & Karvinen (2018)\n"
-        rf"$b$ = {THICKNESS_MM} mm,  $T_0$ = 650 °C,  $h$ = 450 W m$^{{-2}}$ K$^{{-1}}$",
-        fontsize=11)
+    ax.legend(loc="upper left", fontsize=10, ncol=2)
 
     fig.tight_layout()
     _save(fig, "fig9_fem_vs_paper.png")
 
-
 # ============================================================
 # Fig. 11 — FEM vs Paper temperature profiles through thickness
 # ============================================================
-
 def plot_fig11_vs_paper(temperature, z):
     """
     Overlay FEM temperature profiles vs digitised Aronen 2018 Fig. 6 data.
-    FEM: black lines with different linestyles per time
-    Paper: open markers per time snapshot
+
+    FEM:
+        - Black curves
+        - Different line styles for each time
+
+    Paper:
+        - Red curves
+        - Same line styles as FEM for each corresponding time
     """
+
     if not PAPER_T_PROF or all(v is None for v in PAPER_T_PROF.values()):
         print("  Skipping fig11 — temperature profile CSVs not available.")
         return
 
-    # Time slots, matching labels, linestyles, and marker shapes
     slots = [
-        ("t0",   0.0,   "-",              "o", "0 s"),
-        ("t5",   5.0,   "--",             "s", "5 s"),
-        ("t10",  10.0,  "-.",             "^", "10 s"),
-        ("t20",  20.0,  ":",              "D", "20 s"),
-        ("t100", 100.0, (0, (5, 1)),      "v", "100 s"),
+        ("t0",    0.0,   "-",         "o", "t=0 s"),
+        ("t5",    5.0,   "--",        "s", "t=5 s"),
+        ("t10",  10.0,   "-.",        "^", "t=10 s"),
+        ("t20",  20.0,   ":",         "D", "t=20 s"),
+        ("t100", 100.0,  (0, (5, 1)), "v", "t=100 s"),
     ]
 
-    fig, ax = plt.subplots(figsize=(6.5, 5.5))
-    ax.yaxis.grid(True, color="lightgray", lw=0.6, zorder=0)
+    fig, ax = plt.subplots(
+        figsize=(6.5, 5.5),
+        dpi=800
+    )
+
+    ax.yaxis.grid(
+        True,
+        color="lightgray",
+        lw=0.6,
+        zorder=0
+    )
+
     ax.set_axisbelow(True)
 
     mae_all = []
 
     for key, ts, ls, mk, lbl in slots:
-        # FEM line
+
+        # =====================================================
+        # FEM profile: black line
+        # =====================================================
         if ts <= 0:
             y_fem = np.full_like(z, 650.0)
         else:
-            idx = max(0, min(int(round(ts / dt)) - 1, Nt - 1))
+            idx = max(
+                0,
+                min(int(round(ts / dt)) - 1, Nt - 1)
+            )
             y_fem = temperature[:, idx] - 273.15
 
-        ax.plot(z, y_fem, color="black", lw=1.8, ls=ls, label=f"FEM {lbl}")
+        ax.plot(
+            z,
+            y_fem,
+            color="black",
+            lw=2.0,
+            linestyle=ls,
+            label=f"FEM — {lbl}"
+        )
 
-        # Paper markers
+        # =====================================================
+        # Paper profile: red line with same linestyle
+        # =====================================================
         prof = PAPER_T_PROF.get(key)
+
         if prof is not None:
-            ax.plot(prof[:, 0], prof[:, 1],
-                    color="black", lw=0, marker=mk, ms=5,
-                    mfc="white", mew=1.2, label=f"Paper {lbl}")
 
-            # Compute MAE at this time
+            prof_half = prof[::2]
+
+            ax.plot(
+                prof_half[:, 0],
+                prof_half[:, 1],
+                color="red",
+                lw=0,
+                linestyle="None",
+                marker=mk,
+                markersize=5,
+                markerfacecolor="white",
+                markeredgecolor="red",
+                markeredgewidth=1.2,
+                label=f"Aronen 2018 - {lbl}"
+            )
+            # =================================================
+            # MAE calculation
+            # =================================================
             from scipy.interpolate import interp1d
-            f_fem = interp1d(z, y_fem, bounds_error=False,
-                             fill_value="extrapolate")
+
+            f_fem = interp1d(
+                z,
+                y_fem,
+                bounds_error=False,
+                fill_value="extrapolate"
+            )
+
             fem_at_paper = f_fem(prof[:, 0])
-            mae = float(np.mean(np.abs(fem_at_paper - prof[:, 1])))
-            mae_pct = mae / (float(np.ptp(prof[:, 1])) or 1.0) * 100
-            mae_all.append((lbl, mae, mae_pct))
 
-    ax.set_xlabel("$z$ [mm]", fontsize=12)
-    ax.set_ylabel("Temperature $T$ [°C]", fontsize=12)
-    ax.set_xlim(-THICKNESS_MM/2, THICKNESS_MM/2)
-    ax.set_ylim(0, 700)
-    ax.set_yticks(range(0, 701, 100))
+            mae = float(
+                np.mean(
+                    np.abs(fem_at_paper - prof[:, 1])
+                )
+            )
 
-    # Two-column legend: FEM lines left, Paper markers right
+            mae_pct = mae / (650.0 - 20.0) * 100
+
+            mae_all.append(
+                (lbl, mae, mae_pct)
+            )
+
+    ax.set_xlabel(
+        "L [mm]",
+        fontsize=16
+    )
+
+    ax.set_ylabel(
+        "Temperature T [°C]",
+        fontsize=16
+    )
+
+    ax.tick_params(
+        axis="x",
+        labelsize=14
+    )
+
+    ax.tick_params(
+        axis="y",
+        labelsize=14
+    )
+
+    ax.set_xlim(
+        -THICKNESS_MM / 2,
+        THICKNESS_MM / 2
+    )
+
+    ax.set_ylim(
+        0,
+        700
+    )
+
+    ax.set_yticks(
+        range(0, 701, 100)
+    )
+
     handles, labels = ax.get_legend_handles_labels()
-    n = len(slots)
-    ax.legend(handles[:n] + handles[n:], labels[:n] + labels[n:],
-              fontsize=8, ncol=2,
-              title="FEM (lines)  vs  Paper (markers)", title_fontsize=8,
-              loc="upper right")
 
-    ax.set_title(
-        "FEM vs Aronen & Karvinen (2018) — Temperature profiles\n"
-        rf"$b$ = {THICKNESS_MM} mm,  $T_0$ = 650 \u00b0C,  $h$ = 450 W m$^{{-2}}$ K$^{{-1}}$",
-        fontsize=11)
+    ax.legend(
+        handles,
+        labels,
+        fontsize=9,
+        ncol=2,
+        #title="FEM black curves vs Paper red curves",
+        #title_fontsize=9,
+        loc="lower right"
+    )
+
+    #ax.set_title("FEM vs Aronen & Karvinen (2018) — Temperature Profiles",fontsize=16,fontweight="semibold",pad=18)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
     fig.tight_layout()
-    _save(fig, "fig11_temp_profiles_vs_paper.png")
 
-    # Print error table
-    sep = "-" * 50
+    _save(
+        fig,
+        "fig11_temp_profiles_vs_paper.png"
+    )
+
+    sep = "-" * 55
+
     print(f"\n{sep}")
-    print("  Temperature profile MAE — FEM vs Aronen 2018")
+    print(" Temperature Profile MAE — FEM vs Aronen (2018)")
     print(sep)
-    print(f"  {'Time':<12} {'MAE [degC]':>12} {'MAE [%]':>10}")
-    print(f"  {'-'*12} {'-'*12} {'-'*10}")
+
+    print(
+        f"{'Time':<12}"
+        f"{'MAE [°C]':>12}"
+        f"{'MAE [%]':>12}"
+    )
+
+    print(
+        f"{'-'*12}"
+        f"{'-'*12}"
+        f"{'-'*12}"
+    )
+
     for lbl, mae, mae_pct in mae_all:
-        print(f"  {lbl:<12} {mae:>12.2f} {mae_pct:>10.1f}")
+
+        print(
+            f"{lbl:<12}"
+            f"{mae:>12.2f}"
+            f"{mae_pct:>12.2f}"
+        )
+
     print(sep)
-
-
 # ============================================================
 # Fig. 12 — FEM vs Paper stress profiles through thickness
 # ============================================================
@@ -886,84 +1048,295 @@ def plot_fig11_vs_paper(temperature, z):
 def plot_fig12_vs_paper(stress, z):
     """
     Overlay FEM stress profiles vs digitised Aronen 2018 Fig. 7.
-    FEM: black lines, different linestyles per time
-    Paper: open markers per time snapshot
+
+    FEM:
+        - Black curves
+        - Different line styles for each time
+
+    Paper:
+        - Green curves
+        - Same line styles as FEM
     """
+
     if not PAPER_S_PROF or all(v is None for v in PAPER_S_PROF.values()):
         print("  Skipping fig12 — stress profile CSVs not available.")
         return
 
     slots = [
-        ("t0",   0.0,   "-",           "o", "0 s"),
-        ("t5",   5.0,   "--",          "s", "5 s"),
-        ("t10",  10.0,  "-.",          "^", "10 s"),
-        ("t20",  20.0,  ":",           "D", "20 s"),
-        ("t100", 100.0, (0, (5, 1)),   "v", "100 s"),
+        ("t0",    0.0,   "-",         "o", "t=0 s"),
+        ("t5",    5.0,   "--",        "s", "t=5 s"),
+        ("t10",  10.0,   "-.",        "^", "t=10 s"),
+        ("t20",  20.0,   ":",         "D", "t=20 s"),
+        ("t100", 100.0,  (0, (5, 1)), "v", "t=100 s"),
     ]
 
-    fig, ax = plt.subplots(figsize=(6.5, 5.5))
-    ax.yaxis.grid(True, color="lightgray", lw=0.6, zorder=0)
+    fig, ax = plt.subplots(
+        figsize=(6.5, 5.5),
+        dpi=800
+    )
+
+    ax.yaxis.grid(
+        True,
+        color="lightgray",
+        lw=0.6,
+        zorder=0
+    )
+
     ax.set_axisbelow(True)
 
     mae_all = []
+
     from scipy.interpolate import interp1d
 
     for key, ts, ls, mk, lbl in slots:
-        # FEM
+
+        # =====================================================
+        # FEM profile (BLACK)
+        # =====================================================
         if ts <= 0:
             y_fem = np.zeros_like(z)
         else:
-            idx   = max(0, min(int(round(ts / dt)) - 1, Nt - 1))
+            idx = max(
+                0,
+                min(int(round(ts / dt)) - 1, Nt - 1)
+            )
             y_fem = stress[:, idx] / 1e6
 
-        ax.plot(z, y_fem, color="black", lw=1.8, ls=ls, label=f"FEM {lbl}")
+        ax.plot(
+            z,
+            y_fem,
+            color="black",
+            lw=2.0,
+            linestyle=ls,
+            label=f"FEM {lbl}"
+        )
 
-        # Paper markers
+        # =====================================================
+        # Paper profile (GREEN)
+        # =====================================================
         prof = PAPER_S_PROF.get(key)
+
         if prof is not None:
-            ax.plot(prof[:, 0], prof[:, 1],
-                    color="black", lw=0, marker=mk, ms=5,
-                    mfc="white", mew=1.2, label=f"Paper {lbl}")
 
-            # MAE
-            f_fem = interp1d(z, y_fem, bounds_error=False,
-                             fill_value="extrapolate")
-            err   = f_fem(prof[:, 0]) - prof[:, 1]
-            mae   = float(np.mean(np.abs(err)))
-            rng   = float(np.ptp(prof[:, 1])) or 1.0
-            mae_all.append((lbl, mae, mae / rng * 100))
+            prof_half = prof[::2]
 
-    ax.axhline(0, color="black", lw=0.7)
-    ax.set_xlabel("$z$ [mm]", fontsize=12)
-    ax.set_ylabel(r"Stress $\sigma$ [MPa]", fontsize=12)
-    ax.set_xlim(-THICKNESS_MM/2, THICKNESS_MM/2)
+            ax.plot(
+                prof_half[:, 0],
+                prof_half[:, 1],
+                color="red",
+                lw=0,
+                linestyle="None",
+                marker=mk,
+                markersize=5,
+                markerfacecolor="white",
+                markeredgecolor="green",
+                markeredgewidth=1.2,
+                label=f"Aronen 2018{lbl}"
+            )
 
-    handles, labels = ax.get_legend_handles_labels()
-    n = len(slots)
-    ax.legend(handles[:n] + handles[n:], labels[:n] + labels[n:],
-              fontsize=8, ncol=2,
-              title="FEM (lines)  vs  Paper (markers)", title_fontsize=8,
-              loc="lower right")
+            # =================================================
+            # MAE calculation
+            # =================================================
+            f_fem = interp1d(
+                z,
+                y_fem,
+                bounds_error=False,
+                fill_value="extrapolate"
+            )
 
-    ax.set_title(
-        "FEM vs Aronen & Karvinen (2018) — Stress profiles\n"
-        rf"$b$ = {THICKNESS_MM} mm,  $T_0$ = 650 \u00b0C,  $h$ = 450 W m$^{{-2}}$ K$^{{-1}}$",
-        fontsize=11)
+            err = f_fem(prof[:, 0]) - prof[:, 1]
+
+            mae = float(
+                np.mean(
+                    np.abs(err)
+                )
+            )
+
+            stress_reference = 115.0  # MPa, benchmark surface residual stress level
+
+            mae_pct = mae / stress_reference * 100
+
+            mae_all.append(
+                (lbl, mae, mae_pct)
+            )
+
+    # =========================================================
+    # Formatting
+    # =========================================================
+
+    ax.axhline(
+        0,
+        color="black",
+        lw=0.8
+    )
+
+    ax.set_xlabel(
+        "L [mm]",
+        fontsize=16
+    )
+
+    ax.set_ylabel(
+        r"Stress $\sigma$ [MPa]",
+        fontsize=16
+    )
+
+    ax.tick_params(
+        axis="x",
+        labelsize=14
+    )
+
+    ax.tick_params(
+        axis="y",
+        labelsize=14
+    )
+
+    ax.set_xlim(
+        -THICKNESS_MM / 2,
+        THICKNESS_MM / 2
+    )
+
+    ax.legend(
+        fontsize=9,
+        ncol=2,
+        #="FEM black curves vs Paper green curves",
+        #title_fontsize=9,
+        loc="lower right"
+    )
+
+    #ax.set_title("FEM vs Aronen & Karvinen (2018) — Stress Profiles",fontsize=16,fontweight="semibold",pad=18)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
     fig.tight_layout()
-    _save(fig, "fig12_stress_profiles_vs_paper.png")
 
-    # Print error table
-    sep = "-" * 50
+    _save(
+        fig,
+        "fig12_stress_profiles_vs_paper.png"
+    )
+
+    # =========================================================
+    # Error table
+    # =========================================================
+
+    sep = "-" * 55
+
     print(f"\n{sep}")
-    print("  Stress profile MAE — FEM vs Aronen 2018")
+    print(" Stress Profile MAE — FEM vs Aronen (2018)")
     print(sep)
-    print(f"  {'Time':<12} {'MAE [MPa]':>12} {'MAE [%]':>10}")
-    print(f"  {'-'*12} {'-'*12} {'-'*10}")
+
+    print(
+        f"{'Time':<12}"
+        f"{'MAE [MPa]':>12}"
+        f"{'MAE [%]':>12}"
+    )
+
+    print(
+        f"{'-'*12}"
+        f"{'-'*12}"
+        f"{'-'*12}"
+    )
+
     for lbl, mae, mae_pct in mae_all:
-        print(f"  {lbl:<12} {mae:>12.2f} {mae_pct:>10.1f}")
+
+        print(
+            f"{lbl:<12}"
+            f"{mae:>12.2f}"
+            f"{mae_pct:>12.2f}"
+        )
+
     print(sep)
 
+def plot_fig8_fictive_temperature(fictive, nx, x_T=None):
+    """
+    Fictive temperature vs time
+    Surface = solid black
+    Mid-plane = dashed black
+    """
 
+    s, m = surf_mid(nx)
+
+    nx_T = fictive.shape[0]
+
+    if x_T is not None and nx_T != nx:
+        idx_surf = np.argmin(np.abs(x_T - (-THICKNESS_MM/2)))
+        idx_mid  = np.argmin(np.abs(x_T))
+    else:
+        idx_surf = s
+        idx_mid  = m
+
+    Tf_surface = fictive[idx_surf] - 273.15
+    Tf_mid     = fictive[idx_mid]  - 273.15
+
+    # prepend initial condition
+    t_plot = np.concatenate([[1e-3], t_array])
+
+    Tf_surface_plot = np.concatenate([[650.0], Tf_surface])
+    Tf_mid_plot     = np.concatenate([[650.0], Tf_mid])
+
+    fig, ax = plt.subplots(
+        figsize=(7.0, 5.0),
+        dpi=800
+    )
+
+    ax.yaxis.grid(
+        True,
+        color="lightgray",
+        lw=0.6
+    )
+
+    ax.set_axisbelow(True)
+
+    ax.plot(
+        t_plot,
+        Tf_surface_plot,
+        color="black",
+        lw=2.5,
+        linestyle="-",
+        label="Surface"
+    )
+
+    ax.plot(
+        t_plot,
+        Tf_mid_plot,
+        color="black",
+        lw=2.5,
+        linestyle="--",
+        dashes=(4,4),
+        label="Mid-plane"
+    )
+
+    ax.set_xscale("log")
+    ax.set_xlim(1e-3, 100)
+
+    ax.set_ylim(580, 660)
+
+    ax.set_xlabel(
+        "Time $t$ [s]",
+        fontsize=18
+    )
+
+    ax.set_ylabel(
+        "Fictive temperature $T_f$ [°C]",
+        fontsize=18
+    )
+
+    ax.tick_params(
+        axis="both",
+        labelsize=16
+    )
+
+    ax.legend(
+        fontsize=14,
+        loc="lower left"
+    )
+
+    plt.tight_layout()
+
+    _save(
+        fig,
+        "fig8_fictive_temperature_vs_time.png"
+    )
 # ============================================================
 # Main
 # ============================================================
@@ -982,11 +1355,17 @@ def main():
     plot_fig5(stress, nx)
     plot_fig6(temperature, z, x_T)
     plot_fig7(stress, z)
-    plot_fig8(temperature, fictive, nx, x_T)
+    if fictive is not None:
+        plot_fig8_fictive_temperature(
+        fictive,
+        nx,
+        x_T
+    )
+    plot_fig9_vs_paper(stress, nx)
     plot_fig10_vs_paper(temperature, nx, x_T)
     plot_fig11_vs_paper(temperature, z)
     plot_fig12_vs_paper(stress, z)
-    plot_fig9_vs_paper(stress, nx)
+
     compute_error_metrics(stress, nx)
 
     print(f"\nAll plots saved to: {os.path.abspath(PLOT_DIR)}")

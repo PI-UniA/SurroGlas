@@ -19,7 +19,7 @@ os.makedirs(PLOT_DIR, exist_ok=True)
 
 # Time settings (must match the dataset generation settings)
 t_start = 0.0
-t_end = 330.0
+t_end = 200.0
 dt = 0.1
 Nt = int((t_end - t_start) / dt)   
 
@@ -328,6 +328,68 @@ def plot_surface_stress_vs_distance(stress: np.ndarray, which: str, case_idx: in
     plt.show()
     print(f"✅ Saved: {out}")
 
+def plot_temperature_map_vs_distance(temperature: np.ndarray, which: str, case_idx: int, tag: str, nx_now: int):
+    t_ = np.linspace(t_start, t_end, Nt)
+    x_ = velocity_m_per_s * t_
+
+    fig, ax = plt.subplots(figsize=(8.0, 4.0))
+
+    im = ax.imshow(
+        temperature,
+        aspect="auto",
+        origin="lower",
+        cmap="RdYlBu_r",
+        extent=[x_[0], x_[-1], 0, nx_now - 1],
+    )
+
+    ax.set_xlabel("Lehr distance x (m)")
+    ax.set_ylabel("Space index / thickness node")
+    ax.set_title(f"FEM Temperature Field vs Lehr Distance ({which}, case {case_idx})", pad=20)
+
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Temperature (K)")
+
+    add_zone_lines_distance(ax)
+
+    plt.tight_layout()
+
+    out = os.path.join(PLOT_DIR, f"temperature_map_vs_distance_{tag}.png")
+    plt.savefig(out, dpi=800, bbox_inches="tight")
+    plt.show()
+
+    print(f"✅ Saved: {out}")
+
+
+def plot_stress_map_vs_distance(stress: np.ndarray, which: str, case_idx: int, tag: str, nx_now: int):
+    t_ = np.linspace(t_start, t_end, Nt)
+    x_ = velocity_m_per_s * t_
+
+    fig, ax = plt.subplots(figsize=(8.0, 4.0))
+
+    im = ax.imshow(
+        stress/10e6,
+        aspect="auto",
+        origin="lower",
+        cmap="PuOr",
+        extent=[x_[0], x_[-1], 0, nx_now - 1],
+    )
+
+    ax.set_xlabel("Lehr distance x (m)")
+    ax.set_ylabel("Space index / thickness node")
+    ax.set_title(f"FEM Stress Field vs Lehr Distance ({which}, case {case_idx})", pad=20)
+
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Stress (Pa)")
+
+    add_zone_lines_distance(ax)
+
+    plt.tight_layout()
+
+    out = os.path.join(PLOT_DIR, f"stress_map_vs_distance_{tag}.png")
+    plt.savefig(out, dpi=600, bbox_inches="tight")
+    plt.show()
+
+    print(f"✅ Saved: {out}")
 
 # ============================================================
 # Main
@@ -362,6 +424,8 @@ def main():
 
         plot_temperature_map(temperature, which, case_idx, tag, nx_now)
         plot_stress_map(stress, which, case_idx, tag, nx_now)
+        plot_temperature_map_vs_distance(temperature, which, case_idx, tag, nx_now)
+        plot_stress_map_vs_distance(stress, which, case_idx, tag, nx_now)
         plot_temperature_timeseries(temperature, which, case_idx, tag)
         plot_stress_timeseries(stress, which, case_idx, tag)
         plot_surface_temperature_vs_distance(temperature, which, case_idx, tag)

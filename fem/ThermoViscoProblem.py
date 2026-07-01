@@ -88,7 +88,12 @@ class ThermoViscoProblem:
             functions_current=self.functions_current,
             functions_previous=self.functions_previous,
             functions_next=self.functions_next,
-            dt=self.dt)
+            dt=self.dt,
+            d_eps=self.in_plane_strain_increment,
+            mesh=self.mesh)
+
+        # Build the UFL plate-stress expressions/forms (physics lives in the
+        # material model; the Functions/Constant it references are owned here).
 
         self.jit_options     = jit_options
         self.create_vtx_files = None
@@ -146,6 +151,15 @@ class ThermoViscoProblem:
         self.functionSpaces["Tf_partial"] = fem.functionspace(
             self.mesh, self.finiteElements["Tf_partial"])
 
+        # M-tilde carried partial-stress state (vector, size = tableau_size).
+        # Same family/degree as T so its nodal ordering matches delta_xi etc.
+        self.finiteElements["mt_partial"] = element(
+            config["T"]["element"], self.mesh.basix_cell(),
+            config["T"]["degree"],
+            shape=(self.material_model.tableau_size,))
+        self.functionSpaces["mt_partial"] = fem.functionspace(
+            self.mesh, self.finiteElements["mt_partial"])
+
         # Stress / strain tensor (dim × dim)
         self.finiteElements["sigma"] = element(
             config["sigma"]["element"], self.mesh.basix_cell(),
@@ -153,14 +167,6 @@ class ThermoViscoProblem:
             shape=(self.dim, self.dim))
         self.functionSpaces["sigma"] = fem.functionspace(
             mesh=self.mesh, element=self.finiteElements["sigma"])
-
-        # Partial stresses (tableau_size × dim × dim)
-        self.finiteElements["sigma_partial"] = element(
-            config["sigma"]["element"], self.mesh.basix_cell(),
-            degree=config["sigma"]["degree"],
-            shape=(self.material_model.tableau_size, self.dim, self.dim))
-        self.functionSpaces["sigma_partial"] = fem.functionspace(
-            self.mesh, self.finiteElements["sigma_partial"])
 
         # Displacement (vector, size = dim)
         self.finiteElements["U"] = element(
@@ -180,8 +186,8 @@ class ThermoViscoProblem:
 
         V_T   = self.functionSpaces["T"]
         V_sig = self.functionSpaces["sigma"]
-        V_sp  = self.functionSpaces["sigma_partial"]
         V_Tfp = self.functionSpaces["Tf_partial"]
+        V_mt  = self.functionSpaces["mt_partial"]
         V_U   = self.functionSpaces["U"]
 
         # --- Temperature ---
@@ -223,22 +229,6 @@ class ThermoViscoProblem:
         self.functions_previous["volumetric_strain"] = Function(V_T)
         self.functions["volumetric_strain"]          = Function(V_T)
 
-        # --- Partial stresses ---
-        self.functions["ds_partial"]               = Function(V_sp, name="Deviatoric_stress_increment")
-        self.functions_previous["ds_partial"]      = Function(V_sp)
-        self.functions["dsigma_partial"]            = Function(V_Tfp, name="Hydrostatic_stress_increment")
-        self.functions_previous["dsigma_partial"]   = Function(V_Tfp)
-
-        self.functions_current["s_tilde_partial"]  = Function(V_sp)
-        self.functions_next["s_tilde_partial"]     = Function(V_sp)
-        self.functions_current["sigma_tilde_partial"] = Function(V_Tfp)
-        self.functions_next["sigma_tilde_partial"]    = Function(V_Tfp)
-
-        self.functions_current["s_partial"]        = Function(V_sp)
-        self.functions_next["s_partial"]           = Function(V_sp)
-        self.functions_current["sigma_partial"]    = Function(V_Tfp)
-        self.functions_next["sigma_partial"]       = Function(V_Tfp)
-
         # --- Total stress ---
         self.functions_next["sigma"]               = Function(V_sig, name="Stress_tensor")
         self.functions_current["sigma"]            = Function(V_sig)
@@ -248,6 +238,25 @@ class ThermoViscoProblem:
         self.functions_next["total_tilde_partial"] = Function(V_sig, name="Structural_relaxation")
         self.functions_next["sigma_next_adjusted"] = Function(V_sig)
         self.functions["sigma_1d"]                 = Function(V_sig)
+
+        # --- M-tilde carried stress state (owned here; physics in ViscoelasticModel) ---
+        #   sigma_bulk_partial  : bulk  partial stresses (vector, tableau_size)
+        #   sigma_shear_partial : shear partial stresses (vector, tableau_size)
+        #   mech_dilatation     : accumulated theta  (scalar, K_inf background)
+        #   out_of_plane_strain : accumulated eps_zz (scalar)
+        #   in_plane_strain     : uniform eps (single global scalar -> Constant)
+        # Each state field gets a "_next" twin as the interpolation write target
+        # (avoids read/write aliasing), then is committed current <- next.
+        self.functions["sigma_bulk_partial"]       = Function(V_mt, name="sigma_bulk_partial")
+        self.functions["sigma_shear_partial"]      = Function(V_mt, name="sigma_shear_partial")
+        self.functions["mech_dilatation"]          = Function(V_T,  name="mech_dilatation")
+        self.functions["out_of_plane_strain"]      = Function(V_T,  name="out_of_plane_strain")
+        self.functions_next["sigma_bulk_partial"]  = Function(V_mt)
+        self.functions_next["sigma_shear_partial"] = Function(V_mt)
+        self.functions_next["mech_dilatation"]     = Function(V_T)
+        self.functions_next["out_of_plane_strain"] = Function(V_T)
+        self.in_plane_strain           = fem.Constant(self.mesh, ScalarType(0.0))  # accumulated eps
+        self.in_plane_strain_increment = fem.Constant(self.mesh, ScalarType(0.0))  # d_eps this step
 
         # --- Stiffness matrix coefficients ---
         self.functions["stiffness_matrix"] = Function(V_sig)
@@ -325,7 +334,7 @@ class ThermoViscoProblem:
         self.functions_current["phi"].x.array[:]    = 1.0
         # phi_v IC at T=T0, Tf=T0:  φ = exp((H/R)(1/Tref - 1/T0))
         import math as _math
-        H_val    = float(self.material_model.Hv.value)
+        H_val    = float(self.material_model.HvRg.value)
         R_val    = float(self.material_model.Rg.value)
         Tb_val   = float(self.material_model.Tb.value)
         T0_val   = float(self.material_model.T_init.value)
@@ -436,7 +445,7 @@ class ThermoViscoProblem:
         k_T  = 0.975 + 8.58e-4 * T_C
         Tg   = 850.0
         cp_l = 1433.0
-        cp_s = 893.0 + 0.4 * T - 1.8e-7 / T**2
+        cp_s = 893.0 + 0.4 * T 
         cp_T = conditional(ge(T, Tg), cp_l, cp_s)
 
         rho      = self.physical_model.rho
@@ -454,8 +463,8 @@ class ThermoViscoProblem:
         face_terms = (
             h_total * (T - T_ext) * self.v * ds(1)
             + h_total * (T - T_ext) * self.v * ds(2)
-            + eps * sigma_SB * (T - T_ext**4) * self.v * ds(1)
-            + eps * sigma_SB * (T - T_ext**4) * self.v * ds(2)
+            #+ eps * sigma_SB * (T - T_ext**4) * self.v * ds(1)
+            #+ eps * sigma_SB * (T - T_ext**4) * self.v * ds(2)
         )
         edge_terms = ufl.as_ufl(0)
         if self.dim == 2:
@@ -565,14 +574,12 @@ class ThermoViscoProblem:
         # φ_v^{n+1} was computed in _solve_Tf at (T^{n+1}, Tf^{n+1}) — available
         # φ_v^{n}   was stored as functions_previous["phi_v"] at end of last step
         # Δξ = (Δt/2)(φ_v^n + φ_v^{n+1})
-        self.functions["xi"].interpolate(
-            self.material_model.expressions["xi"])
+        #self.functions["xi"].interpolate(self.material_model.expressions["xi"])
         self.functions["delta_xi"].interpolate(
             self.material_model.expressions["delta_xi"])
 
         # Also update T_next for next-step carry-over extrapolation
-        self.functions_next["T"].interpolate(
-            self.material_model.expressions["T_next"])
+        #self.functions_next["T"].interpolate(self.material_model.expressions["T_next"])
         # phi_v^{n} ← phi_v^{n+1} for next step (store current as previous)
         self.functions_previous["phi_v"].x.array[:] = self.functions["phi_v"].x.array.copy()
         self.functions_previous["phi_v"].x.scatter_forward()
@@ -598,34 +605,40 @@ class ThermoViscoProblem:
 
     def _solve_stress(self) -> None:
         """
-        Compute in-plane residual stress for 1D infinite-plate tempering.
-        Also updates M_eff (effective biaxial modulus) for DG elasticity.
-
-        Uses the incremental viscoelastic update (Prony series) for the
-        hydrostatic part, driven by thermal strain.
-
-        The total stress is assembled from partial Prony stresses and
-        equilibrium is enforced by enforce_zero_force_shift().
+        Rigorous 1D infinite-plate stress via the consistent biaxial tangent
+        M~ = 18 K~ G~/(3 K~ + 4 G~).  Pure FEniCS: the uniform in-plane strain
+        increment d_eps is the one global unknown, solved from int sigma dz = 0
+        by assembling two scalars; every field update is an interpolate of a
+        UFL Expression built in ViscoelasticModel.init_stress_forms().
+        eps_zz is eliminated pointwise from sigma_zz = 0; equilibrium is exact.
         """
-        # Stress increments  Δσ̄_n  driven by -ε_th (Eq. 15b)
-        self.functions["dsigma_partial"].interpolate(
-            self.material_model.expressions["dsigma_partial"])
+        # ---- global equilibrium: d_eps = int(M~ deth - Hxx*)dz / int M~ dz ----
+        num = self.mesh.comm.allreduce(
+            fem.assemble_scalar(self.material_model.stress_num_form), op=MPI.SUM)
+        den = self.mesh.comm.allreduce(
+            fem.assemble_scalar(self.material_model.stress_den_form), op=MPI.SUM)
+        if den > 1.0e-6 * self.material_model.stress_K0 * self.material_model.stress_len:
+            self.in_plane_strain_increment.value = num / den
+        else:
+            self.in_plane_strain_increment.value = 0.0   # fully liquid: no stiffness
 
-        # Carry-over terms  σ̃_n  (Eq. 16b)
-        self.functions_next["sigma_tilde_partial"].interpolate(
-            self.material_model.expressions["sigma_tilde_partial_next"])
+        # ---- update carried state into the "next" twins (reads current) ----
+        self.functions_next["sigma_bulk_partial"].interpolate(self.material_model.expressions["sigma_bulk_partial"])
+        self.functions_next["sigma_shear_partial"].interpolate(self.material_model.expressions["sigma_shear_partial"])
+        self.functions_next["mech_dilatation"].interpolate(self.material_model.expressions["mech_dilatation"])
+        self.functions_next["out_of_plane_strain"].interpolate(self.material_model.expressions["out_of_plane_strain"])
+        self.functions_next["sigma"].interpolate(self.material_model.expressions["sigma"])          # (1,1) tensor
+        self.functions_next["sigma"].x.scatter_forward()
 
-        # Updated partial stresses  σ_n = Δσ̄_n + σ̃_n  (Eq. 17b)
-        self.functions_next["sigma_partial"].interpolate(
-            self.material_model.expressions["sigma_partial_next"])
+        # ---- commit current <- next (FEniCS-native copy, no aliasing) ----
+        for key in ("sigma_bulk_partial", "sigma_shear_partial",
+                    "mech_dilatation", "out_of_plane_strain"):
+            self.functions[key].interpolate(self.functions_next[key])
+            self.functions[key].x.scatter_forward()
 
-        # Total stress  σ = Σ_n σ_n
-        # sigma_partial has function space shape (tableau_size,) per node
-        # Stored as flat array: [node0_term0, node0_term1, ..., node1_term0, ...]
-        # OR as [term0_node0, term0_node1, ..., term1_node0, ...]  depending on ordering
-        # Use the UFL expression to compute the sum safely
-        self.functions_next["sigma"].interpolate(
-            self.material_model.expressions["sigma_next"])
+        # ---- accumulate the uniform in-plane strain (diagnostic/output) ----
+        self.in_plane_strain.value = (float(self.in_plane_strain.value)
+                                      + float(self.in_plane_strain_increment.value))
 
     # ====================================================================
     # Main time-step  (corrected ordering)
@@ -641,7 +654,8 @@ class ThermoViscoProblem:
     def _solve_u(self) -> None:
         """
         1D infinite plate: displacement U is not solved.
-        Equilibrium ∫σ dΩ = 0 enforced by enforce_zero_force_shift().
+        Equilibrium ∫σ dΩ = 0 is enforced inside _solve_stress (uniform
+        in-plane strain increment solved from the assembled forms).
         """
         self.functions["U"].x.array[:] = 0.0
         self.functions["U"].x.scatter_forward()
@@ -696,33 +710,6 @@ class ThermoViscoProblem:
 
 
 
-    def enforce_zero_force_shift(self) -> float:
-        """
-        Enforce global equilibrium ∫σ dΩ = 0 for the 1D infinite plate.
-        Subtracts mean(σ) from the total stress and shifts sigma_partial
-        consistently so carry-over terms reflect the equilibrium state.
-        """
-        dx = ufl.Measure("dx", domain=self.mesh)
-
-        int_sigma = fem.assemble_scalar(
-            fem.form(self.functions_next["sigma"][0, 0] * dx))
-        int_one   = fem.assemble_scalar(
-            fem.form(ufl.as_ufl(1.0) * dx))
-
-        int_sigma = self.mesh.comm.allreduce(int_sigma, op=MPI.SUM)
-        int_one   = self.mesh.comm.allreduce(int_one,   op=MPI.SUM)
-
-        mean_sigma = int_sigma / int_one
-
-        self.functions_next["sigma"].x.array[:] -= ScalarType(mean_sigma)
-        self.functions_next["sigma"].x.scatter_forward()
-
-        shift_per_term = mean_sigma / self.material_model.tableau_size
-        self.functions_next["sigma_partial"].x.array[:] -= ScalarType(shift_per_term)
-        self.functions_next["sigma_partial"].x.scatter_forward()
-
-        return float(mean_sigma)
-
     def _set_dirichlet_bc_mech(self) -> None:
         """Set Dirichlet BCs for the mechanical problem (2D only)."""
         if self.dim == 1:
@@ -757,25 +744,18 @@ class ThermoViscoProblem:
         self._solve_u()
         self._solve_strains()
         self._solve_stress()
-        mean_sigma = self.enforce_zero_force_shift()
+        # Equilibrium int(sigma) dz = 0 is now enforced exactly inside
+        # _solve_stress (M-tilde uniform-strain closure), so the old
+        # mean-subtraction is disabled:
+        # self.enforce_zero_force_shift()
 
         # --- stress magnitude diagnostic (first 5 steps only) ---
         if self.t <= 5 * self.dt + 1e-12:
             sig_arr = self.functions_next["sigma"].x.array
             xi_arr  = self.functions["xi"].x.array
-            eps_arr = self.functions["elastic_strain"].x.array
-            ds_arr  = self.functions["ds_partial"].x.array
-            dsig_arr= self.functions["dsigma_partial"].x.array
-            sp_arr  = self.functions_next["s_partial"].x.array
-            sigp_arr= self.functions_next["sigma_partial"].x.array
             logger.info(
                 f"  t={self.t:.3f}  |sigma|_max={np.abs(sig_arr).max():.3e}"
                 f"  xi={xi_arr.mean():.3e}"
-                f"  |eps|={np.abs(eps_arr).max():.3e}"
-                f"  |ds|={np.abs(ds_arr).max():.3e}"
-                f"  |dsig|={np.abs(dsig_arr).max():.3e}"
-                f"  |s_part|={np.abs(sp_arr).max():.3e}"
-                f"  |sig_part|={np.abs(sigp_arr).max():.3e}"
             )
 
         # --- diagnostics ---
@@ -848,27 +828,9 @@ class ThermoViscoProblem:
             _copy(self.functions["thermal_strain"],
                   self.functions_previous["thermal_strain"])
 
-        # sigma_partial and s_partial: next → current (carry-over for next step)
-        # The carry-over expressions read from functions_current["sigma_partial"]
-        # and functions_current["s_partial"], so we must advance them here.
-        self.functions_current["sigma_partial"].x.array[:] = \
-            self.functions_next["sigma_partial"].x.array.copy()
-        self.functions_current["sigma_partial"].x.scatter_forward()
-
-        self.functions_current["s_partial"].x.array[:] = \
-            self.functions_next["s_partial"].x.array.copy()
-        self.functions_current["s_partial"].x.scatter_forward()
-
-        # sigma_tilde_partial and s_tilde_partial: next → current
-        if "s_tilde_partial" in self.functions_current:
-            self.functions_current["s_tilde_partial"].x.array[:] = \
-                self.functions_next["s_tilde_partial"].x.array.copy()
-            self.functions_current["s_tilde_partial"].x.scatter_forward()
-
-        if "sigma_tilde_partial" in self.functions_current:
-            self.functions_current["sigma_tilde_partial"].x.array[:] = \
-                self.functions_next["sigma_tilde_partial"].x.array.copy()
-            self.functions_current["sigma_tilde_partial"].x.scatter_forward()
+        self.functions_current["sigma"].x.array[:] = \
+            self.functions_next["sigma"].x.array.copy()
+        self.functions_current["sigma"].x.scatter_forward()
 
 
 

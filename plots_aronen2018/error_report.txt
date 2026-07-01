@@ -1,15 +1,15 @@
 FEM vs Aronen & Karvinen (2018) — Error Report
 b=4.0mm  T0=650C  h=450 W/m2K
-Nt=100000  dt=0.001s  N_NODES=29
+Nt=10000  dt=0.01s  N_NODES=29
 
 Metric                              Surface    Mid-plane
 ────────────────────────────────────────────────────────
-  residual_fem_MPa                  -129.97        53.32
-  residual_paper_MPa                -116.35        54.67
-  residual_error_%                   -11.71        -2.47
-  peak_fem_MPa                      -129.97        53.32
-  peak_paper_MPa                    -116.49        55.23
-  peak_error_%                       -11.57        -3.46
-  MAE_MPa                             12.01         1.93
-  RMSE_MPa                            17.06         3.08
-  max_abs_error_MPa                   43.96        13.21
+  residual_fem_MPa                  -122.79        58.39
+  residual_paper_MPa                -115.33        56.10
+  residual_error_%                    -6.47         4.07
+  peak_fem_MPa                      -122.24        58.38
+  peak_paper_MPa                    -116.02        56.84
+  peak_error_%                        -5.36         2.71
+  MAE_MPa                              3.11         0.84
+  RMSE_MPa                             3.88         1.31
+  max_abs_error_MPa                    7.61         3.30

@@ -25,7 +25,7 @@ logger = logging.getLogger("FEM-ARONEN2018")
 # Simulation window
 # ============================================================
 time_window = (0.0, 100.0)
-dt           = 0.001
+dt           = 0.01
 problem_dim  = 1               # 1D: Aronen & Karvinen (2018)
 
 # CG discretisation — standard Lagrange elements, validated against Aronen (2018)
@@ -40,7 +40,7 @@ fe_config = {
 # Geometry  —  0.61 cm = 6.1 mm thick plate  (paper Sec. "Inner Effect")
 # ============================================================
 THICKNESS_MM      = 4.0        # mm — Aronen 2018: b = 4 mm
-N_THICKNESS_NODES = 29         # nodes across thickness (odd → midplane node)
+N_THICKNESS_NODES = 29        # nodes across thickness (odd → midplane node)
 
 N_LENGTH_NODES   = 11          # nodes along y (edge direction)
 LENGTH_M         = 0.05        # m — half-length of plate (50 mm half = 100 mm total)
@@ -85,7 +85,7 @@ model_parameters = {
 
     # --- Narayanaswamy shift-function parameters (Eq. 10) ---
     # H/R = 55 000 K  →  H = 55000 * 8.314 = 457 270 J/mol
-    "Hv":  633527.0,   # J/mol  H/R=76200 K → H=76200*8.314 (Aronen 2018 Table 1)
+    "HvRg":  76200.0,   # J/mol  H/R=76200 K → H=76200*8.314 (Aronen 2018 Table 1)
     "H":   633527.0,   # J/mol  same as Hv (Aronen 2018)
     "Tb":  869.0,      # K      reference temperature T_ref  (Table 1 caption)
     "Rg":  8.314,      # J/mol K
@@ -200,6 +200,13 @@ def save_outputs(model, out_dir, setup_time, solve_time, total_time):
         fmt="%.8f",
         header="x-coordinate of each temperature DOF (for DG ordering)"
     )
+    sig_space = model.functionSpaces["sigma"]
+    sig_coords = sig_space.tabulate_dof_coordinates()  # (n_dofs, 3)
+    np.savetxt(
+        os.path.join(out_dir, "sigma_dof_coords.txt"),
+        sig_coords[:, 0], fmt="%.8f",
+        header="x-coordinate of each sigma DOF",
+    )
 
     # Save simulation metadata for plot script auto-detection
     import json
@@ -296,3 +303,8 @@ if __name__ == "__main__":
     print(f"   Solve:  {solve_time:.1f} s")
     print(f"   Total:  {total_time:.1f} s")
     print(f"   Results saved in: {out_dir}")
+    
+    
+    #4/3 is right now adapt the other factors like dt and others
+    #woks very well with auxilary functions, but we need to change the equilbrium forces and stresses
+    #interpret the mtilde_stress into Visco code independent on mtilde

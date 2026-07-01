@@ -19,7 +19,7 @@ logger = logging.getLogger("FEM-ANNEALING-RUN")
 # ============================================================
 # Global domain / solver configuration
 # ============================================================
-time_window = (0.0, 330.0)   # adapt to your Lehr total duration
+time_window = (0.0, 200.0)   # adapt to your Lehr total duration
 dt = 0.1
 problem_dim = 1
 zone_name = "annealing_lehr_all"
@@ -106,7 +106,7 @@ def build_model_params(row):
         "rho": 2530.0,
         "cp": 1433.0,
         "k": 1.0,
-        "Hv": 633527.0,
+        "HvRg": 76200.0,
         "H": 633527.0,
         "Tb": 869.0,
         "Rg": 8.314,
