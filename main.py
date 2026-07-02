@@ -1,13 +1,31 @@
-# fem_parametric_runner_annealing_multizone.py
+# main.py  —  annealing-Lehr parametric runner (multi-zone, thermo-visco)
+#
+# Runs the annealing Lehr across all five temperature zones (A1..C1), each with
+# its own convective htc and ambient/wall temperature T_amb, plus per-case
+# radiation features (epsilon, sigma).  The full residence time is covered so
+# the glass actually cools through the annealing/strain point in the last zones
+# and the saved stress is the *annealed* state.
+#
+# Design:
+#   * time_window is DERIVED from the zone table, so it always spans the whole
+#     Lehr (start of A1 -> end of the last zone) and can never be truncated.
+#   * The zone schedule is defined ONCE (ZONE_TIME_WINDOWS) and reused; per step
+#     the active zone's htc / T_amb are interpolated into the solver Functions.
+#   * epsilon and sigma are kept as swept, per-case radiation features (constant
+#     across zones); a fresh model is built per case so each gets its own values.
+#   * The train factorial is sampled WITHOUT materialising the full product.
 
 import os
 import json
 import time
+import random
 import logging
 import statistics
 import itertools
+
 import numpy as np
 import pandas as pd
+from petsc4py.PETSc import ScalarType
 
 from fem.geometry import create_mesh
 from fem.ThermoViscoProblem import ThermoViscoProblem
@@ -17,43 +35,49 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("FEM-ANNEALING-RUN")
 
 # ============================================================
+# Zone timing  (single source of truth)
+# ============================================================
+ZONE_ORDER = ["A1", "A2", "B1", "B2", "C1"]
+
+ZONE_TIME_WINDOWS = {
+    "A1": (0.0,    54.7),
+    "A2": (54.7,   109.6),
+    "B1": (109.6,  182.6),
+    "B2": (182.6,  255.57),
+    "C1": (255.57, 328.5),
+}
+
+# ============================================================
 # Global domain / solver configuration
 # ============================================================
-time_window = (0.0, 200.0)   # adapt to your Lehr total duration
-dt = 0.1
+# time_window is derived from the zones so the simulation ALWAYS covers the
+# full Lehr.  This is the single change that makes the annealing physically
+# complete: the glass now reaches the cold final zones and cools through the
+# strain point instead of stopping mid-Lehr.
+LEHR_START = ZONE_TIME_WINDOWS[ZONE_ORDER[0]][0]
+LEHR_END   = ZONE_TIME_WINDOWS[ZONE_ORDER[-1]][1]     # = 328.5 s
+time_window = (LEHR_START, LEHR_END)
+
+dt = 0.1                       # 3285 steps over the Lehr; fine for slow annealing
 problem_dim = 1
 zone_name = "annealing_lehr_all"
 mesh_path = f"mesh{problem_dim}d.msh"
 create_vtx_files = False
 
-# expected output shape
-# adapt Nx to your real mesh nodes if needed
-#Nt = int((time_window[1] - time_window[0]) / dt)
-#Nx = 49
-# thickness and nodes used
-THICKNESS_MM = 4.0
-N_THICKNESS_NODES = 29
+# Belt speed: time -> Lehr distance.  Single source; also written to meta.json
+# so the plot script uses exactly the same value.
+VELOCITY = 0.16417             # m/s
 
-# optional geometry values for future 2D
+# Geometry (through-thickness mesh)
+THICKNESS_MM = 4.0
+N_THICKNESS_NODES = 29         # must match the mesh actually built below
+
+# Optional geometry values for a future 2D extension
 N_LENGTH_NODES = 10
 LENGTH_M = 1.0
 
-
 # ============================================================
-# Zone timing (example only — replace with your real timings)
-# ============================================================
-ZONE_ORDER = ["A1", "A2", "B1", "B2", "C1"]
-
-ZONE_TIME_WINDOWS = {
-    "A1": (0.0,   54.7),
-    "A2": (54.7,  109.6),
-    "B1": (109.6, 182.6),
-    "B2": (182.6, 255.57),
-    "C1": (255.57, 328.5),
-}
-
-# ============================================================
-# TRAIN parameter space — wider, covers test range too
+# TRAIN parameter space  (wider; covers the test range too)
 # ============================================================
 train_param_space = {
     "htc_A1":   [420.0, 435.0, 450.0],
@@ -73,7 +97,7 @@ train_param_space = {
 }
 
 # ============================================================
-# TEST / UNSEEN parameter space — midpoints NOT in train
+# TEST / UNSEEN parameter space  (midpoints NOT in train)
 # ============================================================
 test_param_space = {
     "htc_A1":   [427.0, 443.0],
@@ -91,18 +115,26 @@ test_param_space = {
     "epsilon":  [0.737, 0.812],
     "sigma":    [2.670e-8, 4.670e-8],
 }
+
 # ============================================================
 # Fixed thermo-visco material parameters
 # ============================================================
 def build_model_params(row):
+    """
+    Per-case model parameters.  epsilon and sigma are the radiation features
+    (kept constant across zones, swept per case).  T_ambient / htc are seeded
+    with the FIRST zone's values; they are then overwritten every step by the
+    active zone (see run_annealing_case).
+    """
+    first = ZONE_ORDER[0]
     return {
         "f": 0.0,
-        "epsilon": float(row["epsilon"]),
-        "sigma": float(row["sigma"]),
-        "T_ambient": float(row["T_amb_A1"]),   # initial value; gets updated by zone
+        "epsilon": float(row["epsilon"]),           # radiation feature (per case)
+        "sigma":   float(row["sigma"]),             # radiation feature (per case)
+        "T_ambient": float(row[f"T_amb_{first}"]),  # seed; updated per zone
         "T_0": 923.15,
-        "alpha": 10.0,                         # keep fixed unless you want to vary it too
-        "htc": float(row["htc_A1"]),           # initial value; gets updated by zone
+        "alpha": 10.0,
+        "htc": float(row[f"htc_{first}"]),          # seed; updated per zone
         "rho": 2530.0,
         "cp": 1433.0,
         "k": 1.0,
@@ -115,11 +147,11 @@ def build_model_params(row):
         "Tf_init": 923.15,
         "lambda_": 1.25,
         "mu": 1.0,
-        "Young's_modulus": 70.0e6,
+        "Young's_modulus": 70.0e9,
         "Possion_ratio": 0.22,
         "beta": 0.5,
         "gamma": 0.5,
-        "velocity": 0.16417,                      # fixed, as you requested earlier
+        "velocity": VELOCITY,
     }
 
 analytical_constants = {
@@ -134,122 +166,143 @@ analytical_constants = {
 }
 
 fe_config = {
-    "T": {"element": "CG", "degree": 1},
+    "T":     {"element": "CG", "degree": 1},
     "sigma": {"element": "CG", "degree": 1},
-    "U": {"element": "CG", "degree": 1},
+    "U":     {"element": "CG", "degree": 1},
 }
 
 # ============================================================
-# Utilities
+# Zone schedule  (single source of truth, used everywhere)
 # ============================================================
-def build_zone_schedule_from_row(row):
+def zone_schedule(row):
+    """List of zones with their time window + this case's htc / T_amb."""
+    return [
+        dict(name=z,
+             t0=ZONE_TIME_WINDOWS[z][0],
+             t1=ZONE_TIME_WINDOWS[z][1],
+             htc=float(row[f"htc_{z}"]),
+             T_amb=float(row[f"T_amb_{z}"]))
+        for z in ZONE_ORDER
+    ]
+
+
+def active_zone(t, schedule):
+    """Zone active at time t (clamped to the last zone at/after the Lehr end)."""
+    for z in schedule:
+        if z["t0"] <= t < z["t1"]:
+            return z
+    return schedule[-1]
+
+
+# ============================================================
+# Case sampling  (memory-safe: does NOT materialise the full product)
+# ============================================================
+def sample_factorial(param_space, max_cases=None, seed=42):
     """
-    Returns a list of zones with time windows and zone-specific HTC / T_amb.
+    Sample up to `max_cases` UNIQUE combinations from the full factorial without
+    building the whole Cartesian product in memory.  Falls back to the complete
+    product when it is smaller than `max_cases`.
     """
-    schedule = []
-    for z in ZONE_ORDER:
-        t0, t1 = ZONE_TIME_WINDOWS[z]
-        schedule.append({
-            "zone": z,
-            "t0": t0,
-            "t1": t1,
-            "htc": float(row[f"htc_{z}"]),
-            "T_amb": float(row[f"T_amb_{z}"]),
-        })
-    return schedule
+    keys  = list(param_space.keys())
+    sizes = [len(param_space[k]) for k in keys]
+    total = 1
+    for s in sizes:
+        total *= s
+
+    rng = random.Random(seed)
+    if max_cases is None or total <= max_cases:
+        rows = list(itertools.product(*(param_space[k] for k in keys)))
+    else:
+        rows = []
+        for idx in rng.sample(range(total), max_cases):   # unique, cheap even for millions
+            combo = []
+            for s, k in zip(sizes, keys):
+                idx, r = divmod(idx, s)
+                combo.append(param_space[k][r])
+            rows.append(tuple(combo))
+
+    return pd.DataFrame(rows, columns=keys)
 
 
-def get_active_zone_values(current_time, zone_schedule):
-    """
-    Returns (htc, T_amb, zone_name) for the active zone at current_time.
-    """
-    for item in zone_schedule:
-        if item["t0"] <= current_time < item["t1"]:
-            return item["htc"], item["T_amb"], item["zone"]
-
-    # if exactly at final time, keep last zone
-    last = zone_schedule[-1]
-    return last["htc"], last["T_amb"], last["zone"]
-
-
-def make_case_dataframe_from_full_factorial(param_space, max_cases=None, seed=42):
-    """
-    Builds a dataframe from Cartesian product.
-    WARNING: for many dimensions this becomes huge.
-    Use max_cases to downsample.
-    """
-    keys = list(param_space.keys())
-    combos = list(itertools.product(*(param_space[k] for k in keys)))
-    df = pd.DataFrame(combos, columns=keys)
-
-    if max_cases is not None and len(df) > max_cases:
-        df = df.sample(n=max_cases, random_state=seed).reset_index(drop=True)
-
-    return df
+# ============================================================
+# Metadata for the plot script (single source of truth)
+# ============================================================
+def write_meta(out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    meta = {
+        "t_start":        time_window[0],
+        "t_end":          time_window[1],
+        "dt":             dt,
+        "Nt":             int(round((time_window[1] - time_window[0]) / dt)),
+        "n_nodes":        N_THICKNESS_NODES,
+        "thickness_mm":   THICKNESS_MM,
+        "velocity":       VELOCITY,
+        "discretisation": "CG",
+        "zone_order":     ZONE_ORDER,
+        "zone_time_windows": {z: list(ZONE_TIME_WINDOWS[z]) for z in ZONE_ORDER},
+    }
+    with open(os.path.join(out_dir, "meta.json"), "w") as f:
+        json.dump(meta, f, indent=2)
 
 
+# ============================================================
+# Output saving
+# ============================================================
 def save_case_outputs(model, row, out_dir, case_id, setup_time, solve_time, total_time):
-    """
-    Saves temperature, stress, params, and timing.
-    """
+    """Save temperature/stress space-time histories, the parameter row, and timing."""
     os.makedirs(out_dir, exist_ok=True)
 
-    # These two assume your solver stores full space-time histories:
-    #   model.all_temperatures -> shape like (Nt, Nx)
-    #   model.all_stresses     -> shape like (Nt, Nx)
-    #
-    # If your solver uses different variable names, replace them here.
     np.savetxt(
         os.path.join(out_dir, f"temperature_all_case{case_id}.txt"),
         np.asarray(model.all_temperatures).ravel(),
-        fmt="%.6f"
+        fmt="%.6f",
     )
-
     np.savetxt(
         os.path.join(out_dir, f"stress_all_case{case_id}.txt"),
         np.asarray(model.all_stresses).ravel(),
-        fmt="%.6f"
+        fmt="%.6f",
     )
-
     np.savetxt(
         os.path.join(out_dir, f"params_case_{case_id}.txt"),
         row.values[np.newaxis, :],
         delimiter=",",
         header=",".join(row.index.tolist()),
-        comments=""
+        comments="",
     )
-
     with open(os.path.join(out_dir, f"time_case{case_id}.json"), "w") as f:
         json.dump(
-            {
-                "setup_time_s": float(setup_time),
-                "solve_time_s": float(solve_time),
-                "total_time_s": float(total_time),
-            },
-            f,
-            indent=4
+            {"setup_time_s": float(setup_time),
+             "solve_time_s": float(solve_time),
+             "total_time_s": float(total_time)},
+            f, indent=4,
         )
 
 
 # ============================================================
-# IMPORTANT: connect your annealing Lehr solve logic here
+# Single annealing-Lehr case
 # ============================================================
-from petsc4py.PETSc import ScalarType
-import numpy as np
+def _const_field(value):
+    """Interpolant that fills a scalar Function with a constant value."""
+    v = float(value)
+    def f(x):
+        return np.full(x.shape[1], v, dtype=ScalarType)
+    return f
+
 
 def run_annealing_case(row):
     """
-    Runs one annealing-Lehr case with zone-wise htc/T_amb and global epsilon/sigma.
-    """
+    Run one annealing-Lehr case with zone-wise htc / T_amb and per-case
+    epsilon / sigma.  Before every time step the active zone's htc and T_amb are
+    interpolated into the solver Functions, so BOTH the convective and the
+    radiative boundary flux follow the zone.
 
-    # build zone table for this case
-    ZONES = [
-        dict(name="A1", t0=0.0,    t1=54.7,   htc=float(row["htc_A1"]), T_amb=float(row["T_amb_A1"])),
-        dict(name="A2", t0=54.7,   t1=109.6,  htc=float(row["htc_A2"]), T_amb=float(row["T_amb_A2"])),
-        dict(name="B1", t0=109.6,  t1=182.6,  htc=float(row["htc_B1"]), T_amb=float(row["T_amb_B1"])),
-        dict(name="B2", t0=182.6,  t1=255.57, htc=float(row["htc_B2"]), T_amb=float(row["T_amb_B2"])),
-        dict(name="C1", t0=255.57, t1=328.5,  htc=float(row["htc_C1"]), T_amb=float(row["T_amb_C1"])),
-    ]
+    IMPORTANT (verify in ThermoViscoProblem/ThermalModel): the radiation term
+    must use the SAME functions["T_ambient"] as convection, i.e.
+        q = htc*(T - T_amb) + epsilon*sigma*(T^4 - T_amb^4)
+    with the one T_amb updated here.  Otherwise radiation will not track the
+    zone and the late-zone cooling will be wrong.
+    """
+    schedule = zone_schedule(row)
 
     model = ThermoViscoProblem(
         mesh_path=mesh_path,
@@ -258,75 +311,43 @@ def run_annealing_case(row):
         time=time_window,
         dt=dt,
         model_parameters=build_model_params(row),
-        analy_parameters=analytical_constants
+        analy_parameters=analytical_constants,
     )
 
     t0_setup = time.perf_counter()
     model.setup(dirichlet_bc_mech=True, create_vtx_files=create_vtx_files)
     t1_setup = time.perf_counter()
 
-    def lookup_zone_value(t: float, key: str, default=None):
-        for z in ZONES:
-            if z["t0"] <= t < z["t1"]:
-                return z.get(key, default)
-        if ZONES:
-            return ZONES[-1].get(key, default)
-        return default
+    def update_zone_controls(t):
+        z = active_zone(t, schedule)
+        model.functions["T_ambient"].interpolate(_const_field(z["T_amb"]))
+        model.functions["htc"].interpolate(_const_field(z["htc"]))
+        return z
 
-    def current_zone_name(t: float) -> str:
-        for z in ZONES:
-            if z["t0"] <= t < z["t1"]:
-                return z["name"]
-        return ZONES[-1]["name"] if ZONES else "NA"
+    # Wrap solve_timestep so the zone controls are refreshed before each step.
+    original_solve_timestep = model.solve_timestep
 
-    def update_zone_controls(model, t: float):
-        Tamb = float(lookup_zone_value(t, "T_amb", default=build_model_params(row)["T_0"]))
+    def solve_timestep_wrapped(t):
+        z = update_zone_controls(t)
+        if getattr(model, "_last_zone_printed", None) != z["name"] and model.mesh.comm.rank == 0:
+            logger.info(
+                f"[ZONE] Enter {z['name']:>3s} at t={t:8.2f}s | "
+                f"T_amb={z['T_amb']:8.2f}K | htc={z['htc']:8.2f}"
+            )
+        model._last_zone_printed = z["name"]
+        return original_solve_timestep(t)
 
-        def T_ambient_expr(x):
-            return np.full(x.shape[1], Tamb, dtype=ScalarType)
+    model.solve_timestep = solve_timestep_wrapped
 
-        model.functions["T_ambient"].interpolate(T_ambient_expr)
-
-        htc_val = float(lookup_zone_value(t, "htc", default=0.0))
-
-        def htc_expr(x):
-            return np.full(x.shape[1], htc_val, dtype=ScalarType)
-
-        model.functions["htc"].interpolate(htc_expr)
-
-        return Tamb, htc_val
-
-    def patch_model_zone_functions(model):
-        original_solve_timestep = model.solve_timestep
-
-        def solve_timestep_wrapped(t: float):
-            Tamb, htc_val = update_zone_controls(model, t)
-
-            name = current_zone_name(t)
-            if not hasattr(model, "_last_zone_printed"):
-                model._last_zone_printed = None
-
-            if model._last_zone_printed != name and model.mesh.comm.rank == 0:
-                logger.info(
-                    f"[ZONE] Enter {name:>3s} at t={t:8.2f}s | "
-                    f"T_amb={Tamb:8.2f}K | htc={htc_val:8.2f}"
-                )
-
-            model._last_zone_printed = name
-            return original_solve_timestep(t)
-
-        model.solve_timestep = solve_timestep_wrapped
-
-        if hasattr(model, "set_zones_from_main"):
-            model.set_zones_from_main(ZONES)
-
-    patch_model_zone_functions(model)
+    # If the solver has native zone support, hand it the same schedule.
+    if hasattr(model, "set_zones_from_main"):
+        model.set_zones_from_main(schedule)
 
     t0_solve = time.perf_counter()
     _dto = model.solve()
     t1_solve = time.perf_counter()
 
-    # save histories for dataset export
+    # Collect space-time histories for dataset export.
     if hasattr(model, "temperature_field_history"):
         model.all_temperatures = np.asarray(model.temperature_field_history)
     else:
@@ -340,14 +361,13 @@ def run_annealing_case(row):
     setup_time = t1_setup - t0_setup
     solve_time = t1_solve - t0_solve
     total_time = t1_solve - t0_setup
-
     return model, setup_time, solve_time, total_time
 
 
 # ============================================================
 # Batch runner
 # ============================================================
-def run_batch_and_save(param_df: pd.DataFrame, out_dir: str):
+def run_batch_and_save(param_df, out_dir):
     os.makedirs(out_dir, exist_ok=True)
 
     create_mesh(
@@ -362,47 +382,36 @@ def run_batch_and_save(param_df: pd.DataFrame, out_dir: str):
         n_length_nodes=N_LENGTH_NODES,
     )
 
-    case_times = []
+    # Write metadata up front so the plot script can auto-detect this run.
+    write_meta(out_dir)
 
+    case_times = []
     for i, row in param_df.reset_index(drop=True).iterrows():
-        logger.info(f"[{out_dir}] Running case {i+1}/{len(param_df)}")
+        logger.info(f"[{out_dir}] Running case {i + 1}/{len(param_df)}")
         logger.info(f"Parameters = {row.to_dict()}")
 
         try:
             model, setup_time, solve_time, total_time = run_annealing_case(row)
-
             case_times.append(solve_time)
-
             logger.info(
-                f"[{out_dir}] Case {i}: "
-                f"setup={setup_time:.4f}s, solve={solve_time:.4f}s, total={total_time:.4f}s"
+                f"[{out_dir}] Case {i}: setup={setup_time:.4f}s, "
+                f"solve={solve_time:.4f}s, total={total_time:.4f}s"
             )
-
-            save_case_outputs(
-                model=model,
-                row=row,
-                out_dir=out_dir,
-                case_id=i,
-                setup_time=setup_time,
-                solve_time=solve_time,
-                total_time=total_time
-            )
-
+            save_case_outputs(model, row, out_dir, i, setup_time, solve_time, total_time)
         except Exception as e:
             logger.exception(f"Simulation {i} failed in {out_dir}: {e}")
 
     if case_times:
         timing_summary = {
             "n_cases": len(case_times),
-            "solve_time_mean_s": float(statistics.mean(case_times)),
+            "solve_time_mean_s":   float(statistics.mean(case_times)),
             "solve_time_median_s": float(statistics.median(case_times)),
-            "solve_time_min_s": float(min(case_times)),
-            "solve_time_max_s": float(max(case_times)),
+            "solve_time_min_s":    float(min(case_times)),
+            "solve_time_max_s":    float(max(case_times)),
         }
         with open(os.path.join(out_dir, "timing_summary.json"), "w") as f:
             json.dump(timing_summary, f, indent=4)
-
-        print(f"✅ Timing summary saved: {os.path.join(out_dir, 'timing_summary.json')}")
+        print(f"[OK] Timing summary saved: {os.path.join(out_dir, 'timing_summary.json')}")
 
 
 # ============================================================
@@ -411,50 +420,26 @@ def run_batch_and_save(param_df: pd.DataFrame, out_dir: str):
 if __name__ == "__main__":
     os.makedirs("results", exist_ok=True)
 
-    # IMPORTANT:
-    # Full factorial for 12 parameters can be huge.
-    # Here we cap the number of sampled cases.
-    # New full factorial sizes:
-    # Train: 3^5 × 4^5 × 3 × 3 = 243 × 1024 × 9 = 2,239,488 combinations
-    # → sample generously
-
-    train_df = make_case_dataframe_from_full_factorial(
-        train_param_space,
-        max_cases=256,   # was 64
-        seed=42,
+    logger.info(
+        f"Lehr time window = {time_window} s  "
+        f"({int(round((LEHR_END - LEHR_START) / dt))} steps, dt={dt}s)"
     )
 
-    test_df = make_case_dataframe_from_full_factorial(
-        test_param_space,
-        max_cases=64,    # was 16
-        seed=123,
-    )
+    # Full factorials are large (train ~2.24M combos); sample without materialising.
+    train_df = sample_factorial(train_param_space, max_cases=64, seed=42)
+    test_df  = sample_factorial(test_param_space,  max_cases=8,  seed=123)
 
     train_dir = os.path.abspath("results/train")
-    test_dir = os.path.abspath("results/test_unseen")
+    test_dir  = os.path.abspath("results/test_unseen")
 
     run_batch_and_save(train_df, train_dir)
     train_df.to_csv("parameter_combinations_train.csv", index=False)
-    print("✅ Saved parameter_combinations_train.csv and results/train/*")
+    print("[OK] Saved parameter_combinations_train.csv and results/train/*")
 
     run_batch_and_save(test_df, test_dir)
     test_df.to_csv("parameter_combinations_test_unseen.csv", index=False)
-    print("✅ Saved parameter_combinations_test_unseen.csv and results/test_unseen/*")
+    print("[OK] Saved parameter_combinations_test_unseen.csv and results/test_unseen/*")
 
     all_params = pd.concat([train_df, test_df], ignore_index=True)
     all_params.to_csv("results/parameters_all.csv", index=False)
-    print("✅ Saved results/parameters_all.csv")
-    
-        # Save simulation metadata for plot script auto-detection
-    import json
-    meta = {
-        "t_start":    time_window[0],
-        "t_end":      time_window[1],
-        "dt":         dt,
-        "Nt":         int(round((time_window[1] - time_window[0]) / dt)),
-        "n_nodes":    N_THICKNESS_NODES,
-        "thickness_mm": THICKNESS_MM,
-        "discretisation": "CG",
-    }
-    with open(os.path.join(train_dir, "meta.json"), "w") as _f:
-        json.dump(meta, _f, indent=2)
+    print("[OK] Saved results/parameters_all.csv")

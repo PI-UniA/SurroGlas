@@ -450,28 +450,21 @@ class ThermoViscoProblem:
 
         rho      = self.physical_model.rho
         f        = self.physical_model.f
-        eps      = self.physical_model.epsilon
+        epsilon      = self.physical_model.epsilon
         sigma_SB = self.physical_model.sigma
         T_ext    = self.functions["T_ambient"]
 
         # Combined convection + radiation HTC
-        h_rad   = sigma_SB * eps * (T**3 + T**2*T_ext + T*T_ext**2 + T_ext**3)
-        h_total = self.functions["htc"] + h_rad
-
-        h2_total = self.functions["htc2"] + h_rad
+        h_rad   = sigma_SB * epsilon * (T**3 + T**2*T_ext + T*T_ext**2 + T_ext**3)
+        h_total = self.functions["htc"] #+ h_rad
 
         face_terms = (
             h_total * (T - T_ext) * self.v * ds(1)
             + h_total * (T - T_ext) * self.v * ds(2)
-            #+ eps * sigma_SB * (T - T_ext**4) * self.v * ds(1)
-            #+ eps * sigma_SB * (T - T_ext**4) * self.v * ds(2)
+            + epsilon * sigma_SB * (T - T_ext**4) * self.v * ds(1)
+            + epsilon * sigma_SB * (T - T_ext**4) * self.v * ds(2)
         )
         edge_terms = ufl.as_ufl(0)
-        if self.dim == 2:
-            edge_terms = (
-                h2_total * (T - T_ext) * self.v * ds(3)
-                + h2_total * (T - T_ext) * self.v * ds(4)
-            )
 
         self.F = (
             rho * cp_T * (T - T0) * self.v * dx
@@ -741,7 +734,7 @@ class ThermoViscoProblem:
         self._capture_zone_transitions(t)
         self._solve_Tf()
         self._solve_shifted_time()
-        self._solve_u()
+        #self._solve_u()
         self._solve_strains()
         self._solve_stress()
         # Equilibrium int(sigma) dz = 0 is now enforced exactly inside

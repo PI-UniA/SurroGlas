@@ -4,12 +4,12 @@ Nt=10000  dt=0.01s  N_NODES=29
 
 Metric                              Surface    Mid-plane
 ────────────────────────────────────────────────────────
-  residual_fem_MPa                  -122.79        58.39
+  residual_fem_MPa                  -117.80        56.09
   residual_paper_MPa                -115.33        56.10
-  residual_error_%                    -6.47         4.07
-  peak_fem_MPa                      -122.24        58.38
+  residual_error_%                    -2.15        -0.02
+  peak_fem_MPa                      -117.22        56.09
   peak_paper_MPa                    -116.02        56.84
-  peak_error_%                        -5.36         2.71
-  MAE_MPa                              3.11         0.84
-  RMSE_MPa                             3.88         1.31
-  max_abs_error_MPa                    7.61         3.30
+  peak_error_%                        -1.03        -1.33
+  MAE_MPa                              1.19         0.39
+  RMSE_MPa                             1.37         0.59
+  max_abs_error_MPa                    2.44         2.55
